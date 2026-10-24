@@ -18,6 +18,7 @@ struct MacShowApp: App {
         let player = Player()
         player.nowPlaying = NowPlaying(player: player, artwork: library.artwork)
         player.library = library
+        AppDelegate.player = player
         _library = State(initialValue: library)
         _player = State(initialValue: player)
     }
@@ -115,6 +116,15 @@ private struct OpenWindowButton: View {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set by the app, so files opened from Finder can be played.
+    @MainActor static weak var player: Player?
+
+    /// "Open With MacShow" / dropping files on the Dock icon.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first else { return }
+        MainActor.assumeIsolated { Self.player?.open(url) }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Needed when launched as a bare executable (swift run) rather than an .app bundle.
         NSApp.setActivationPolicy(.regular)

@@ -15,8 +15,9 @@ it plays.
 - **Feels native.** SwiftUI, the macOS dark look from the
   [design canvas](https://claude.ai/artifact/8cPJPydHhuWA93o4L6z94K) (private until shared),
   media keys, Now Playing, AirPlay.
-- **Open source.** The app is MIT-licensed. It links the LGPL build of libmpv and
-  FFmpeg dynamically so that stays possible.
+- **Open source.** The app is MIT-licensed. It uses the LGPL build of libmpv and
+  FFmpeg, linked statically; because MacShow's own source is public, anyone can
+  rebuild it against modified versions of them, as the LGPL requires.
 
 ## Phases
 
@@ -28,7 +29,7 @@ A window that opens a file and plays it with basic controls.
 Done when it plays an MKV, a FLAC and an M4B. Verified on an HEVC/AC-3 MKV, a
 24-bit/96 kHz FLAC and a chaptered M4B.
 
-### Phase 1: Library foundation
+### Phase 1: Library foundation (done)
 
 - Watched folders, the scanner and the database (see [Library](#library)).
 - Home screen and a plain Albums / Movies / Books list, enough to browse and play.
@@ -37,7 +38,7 @@ Done when it plays an MKV, a FLAC and an M4B. Verified on an HEVC/AC-3 MKV, a
 Done when pointing it at `~/Music` lists every album with its cover art, and a
 file copied into a watched folder shows up within seconds without a restart.
 
-### Phase 2: Music
+### Phase 2: Music (done)
 
 - Albums, Artists, Songs and Playlists screens from the design.
 - Play queue, shuffle, repeat, gapless playback, ReplayGain.
@@ -46,19 +47,19 @@ file copied into a watched folder shows up within seconds without a restart.
 Done when an album plays start to finish with no gaps and the keyboard's media
 keys control it while another app is in front.
 
-### Phase 3: Video
+### Phase 3: Video (done)
 
 - Movies and TV Shows, with episodes grouped from file names (`Show S01E02`).
 - Resume where you stopped; "Jump back in" on Home.
 - Subtitle and audio-track menus, external subtitle files, full screen.
-- Picture in Picture last: Apple's PiP only supports its own player, so this
-  needs extra work, and differs between the two builds (see
+- Picture in Picture last (not done yet): Apple's PiP only supports its own
+  player, so this needs extra work, and differs between the two builds (see
   [Distribution](#distribution)).
 
 Done when a season folder shows up as one show in episode order and each
 episode resumes at the right spot.
 
-### Phase 4: Audiobooks
+### Phase 4: Audiobooks (done)
 
 - Books from single M4B/M4A files with chapters, or from a folder of MP3s
   (one book, files in order).
@@ -69,7 +70,7 @@ episode resumes at the right spot.
 Done when a book resumes at the right chapter and second after quitting the app,
 and a folder of numbered MP3s plays as one book.
 
-### Phase 5: Purchases and import polish
+### Phase 5: Purchases and import polish (done)
 
 - Music app Media folder watched by default (see [Purchases](#purchases-from-apple)).
 - External drives: remember their folders, grey items out when the drive is
@@ -78,7 +79,11 @@ and a folder of numbered MP3s plays as one book.
 
 Done when an album downloaded in the Music app appears in MacShow on its own.
 
-### Phase 6: Ship
+### Phase 6: Ship (partly done)
+
+Done: app icon, "Open With" for audio and video, the licenses screen
+(Settings › About) and `scripts/make-dmg.sh`. Signing, notarization, Sparkle and
+the Homebrew cask need a Developer ID; [RELEASING.md](RELEASING.md) has the steps.
 
 The direct download first (see [Distribution](#distribution)):
 
@@ -127,8 +132,10 @@ Watched folders, set on first launch and editable in Settings:
    MP4/M4A/M4P) and listed as "Protected", with a short reason, instead of
    failing silently.
 
-No online lookups in the first version; the library uses what's in the files.
-Fetching missing tags or art (for example from MusicBrainz) can come later.
+Tags come only from the files. The one online lookup is cover art: albums
+without any (iTunes purchases keep theirs in the Music app's database, not in
+the file) get a cover from the iTunes Search API, sending only the album and
+artist names. It can be turned off in Settings › Library.
 
 ### Storage
 

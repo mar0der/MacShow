@@ -3,7 +3,9 @@ import Foundation
 
 /// Reports folders whose contents changed under the watched paths, batched by
 /// `latency` seconds (macOS FSEvents).
-public final class FolderWatcher {
+/// Unchecked Sendable: created on a background thread, then only kept alive and
+/// released; its callbacks run on its own queue.
+public final class FolderWatcher: @unchecked Sendable {
     private var stream: FSEventStreamRef?
     private let onChange: ([String]) -> Void
     private let queue = DispatchQueue(label: "MacShow.FolderWatcher")

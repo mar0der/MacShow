@@ -6,6 +6,7 @@ struct SettingsView: View {
         TabView {
             LibrarySettings().tabItem { Label("Library", systemImage: "folder") }
             DuplicatesSettings().tabItem { Label("Duplicates", systemImage: "square.on.square") }
+            AboutView().tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(width: 600, height: 520)
     }

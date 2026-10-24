@@ -43,6 +43,10 @@ public final class Library {
     @ObservationIgnored private var refreshPending = false
     /// Watched folders as the file system spells them (what FSEvents reports).
     @ObservationIgnored private var watchedRoots: [String] = []
+    /// Updates `watchedRoots`, `offlineFolders`, bookmark access and the watcher.
+    /// Runs off the main thread: touching ~/Downloads can wait on a macOS privacy
+    /// prompt, and the window must still appear meanwhile.
+    @ObservationIgnored private var folderState: Task<Void, Never>?
     @ObservationIgnored private var volumeObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
 
@@ -167,8 +171,11 @@ public final class Library {
     private func volumesChanged() {
         let wasOffline = offlineFolders
         reloadFolders()
-        for folder in folders where wasOffline.contains(folder.path) && !offlineFolders.contains(folder.path) {
-            enqueue(.scan(folder.path))
+        Task {
+            await folderState?.value
+            for folder in folders where wasOffline.contains(folder.path) && !offlineFolders.contains(folder.path) {
+                enqueue(.scan(folder.path))
+            }
         }
     }
 
@@ -214,6 +221,7 @@ public final class Library {
         worker = Task {
             while !jobs.isEmpty {
                 let job = jobs.removeFirst()
+                await folderState?.value
                 switch job {
                 case .scan(let path):
                     // A folder removed since this was queued must not be re-indexed.
@@ -236,23 +244,39 @@ public final class Library {
 
     private func reloadFolders() {
         folders = (try? database.watchedFolders()) ?? []
-        watchedRoots = folders.map { URL(fileURLWithPath: $0.path).canonicalPath }
-        offlineFolders = Set(folders.map(\.path).filter { !FileManager.default.fileExists(atPath: $0) })
-        for folder in folders where !accessedFolders.contains(folder.path) {
-            guard let bookmark = folder.bookmark else { continue }
-            var stale = false
-            guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale),
-                  url.startAccessingSecurityScopedResource()
-            else { continue }
-            accessedFolders.insert(folder.path)
-            if stale, let fresh = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil) {
-                try? database.updateBookmark(fresh, forFolder: folder.path)
-            }
-        }
-        watcher = FolderWatcher(paths: folders.map(\.path)) { [weak self] changed in
-            DispatchQueue.main.async {
-                for path in Set(changed) { self?.enqueue(.scan(path)) }
-            }
+        let folders = folders, alreadyAccessed = accessedFolders, database = database
+        let previous = folderState
+        folderState = Task { [weak self] in
+            await previous?.value
+            let state = await Task.detached(priority: .userInitiated) {
+                // Start sandbox access for bookmarked folders, refreshing stale bookmarks.
+                var accessed: [String] = []
+                for folder in folders where !alreadyAccessed.contains(folder.path) {
+                    guard let bookmark = folder.bookmark else { continue }
+                    var stale = false
+                    guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale),
+                          url.startAccessingSecurityScopedResource()
+                    else { continue }
+                    accessed.append(folder.path)
+                    if stale, let fresh = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil) {
+                        try? database.updateBookmark(fresh, forFolder: folder.path)
+                    }
+                }
+                let roots = folders.map { URL(fileURLWithPath: $0.path).canonicalPath }
+                let offline = Set(folders.map(\.path).filter { !FileManager.default.fileExists(atPath: $0) })
+                // Creating the stream opens each folder, which can also wait on the prompt.
+                let watcher = FolderWatcher(paths: folders.map(\.path)) { [weak self] changed in
+                    DispatchQueue.main.async {
+                        for path in Set(changed) { self?.enqueue(.scan(path)) }
+                    }
+                }
+                return (accessed, roots, offline, watcher)
+            }.value
+            guard let self else { return }
+            accessedFolders.formUnion(state.0)
+            watchedRoots = state.1
+            offlineFolders = state.2
+            watcher = state.3
         }
     }
 

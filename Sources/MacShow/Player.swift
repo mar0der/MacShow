@@ -95,6 +95,7 @@ final class Player {
             ("audio-display", "no"),            // the UI shows cover art itself
             ("gapless-audio", "yes"), ("replaygain", "album"), ("replaygain-fallback", "0"),
             ("input-default-bindings", "no"), ("osc", "no"), ("idle", "yes"),
+            ("load-scripts", "no"), ("config", "no"),  // no Lua scripts, no ~/.config/mpv
         ] {
             mpv_set_option_string(mpv, name, value)
         }
