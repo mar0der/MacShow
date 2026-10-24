@@ -22,6 +22,9 @@ struct VideoTests {
         #expect(!early.isResumable && !early.isFinished)
         #expect(middle.isResumable)
         #expect(credits.isFinished && !credits.isResumable)
+
+        let shortFile = PlaybackPosition(mediaItemId: 1, position: 21, duration: 30, updatedAt: Date())
+        #expect(shortFile.isResumable && !shortFile.isFinished)
     }
 
     @MainActor

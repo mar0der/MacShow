@@ -80,11 +80,49 @@ struct PlayerBar: View {
     }
 }
 
+/// Previous chapter, back 15 s, play/pause, forward 30 s, next chapter.
+struct BookTransportControls: View {
+    var large = false
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        HStack(spacing: large ? 18 : 4) {
+            Button { player.previousChapter() } label: { Image(systemName: "backward.end.fill") }
+                .help("Previous Chapter")
+            Button { player.skip(-15) } label: { Image(systemName: "gobackward.15") }
+                .help("Back 15 Seconds")
+            Button { player.togglePause() } label: {
+                Image(systemName: player.isPaused ? "play.fill" : "pause.fill")
+                    .font(large ? .title : .title3)
+                    .foregroundStyle(large ? Color.white : Color.primary)
+                    .frame(width: large ? 60 : 36, height: large ? 60 : 36)
+                    .background(large ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary.opacity(0.1)), in: Circle())
+            }
+            .help(player.isPaused ? "Play" : "Pause")
+            Button { player.skip(30) } label: { Image(systemName: "goforward.30") }
+                .help("Forward 30 Seconds")
+            Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill") }
+                .help("Next Chapter")
+        }
+        .buttonStyle(.borderless)
+        .imageScale(.large)
+        .font(large ? .title2 : .body)
+    }
+}
+
 /// Shuffle, previous, play/pause, next, repeat.
 struct TransportControls: View {
     @Environment(Player.self) private var player
 
     var body: some View {
+        if player.currentItem?.kind == .audiobook {
+            BookTransportControls()
+        } else {
+            musicControls
+        }
+    }
+
+    private var musicControls: some View {
         HStack(spacing: 4) {
             Button { player.toggleShuffle() } label: {
                 Image(systemName: "shuffle").foregroundStyle(player.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))

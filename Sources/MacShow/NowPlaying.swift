@@ -27,8 +27,17 @@ final class NowPlaying {
         handle(commands.togglePlayPauseCommand) { player, _ in player.togglePause() }
         handle(commands.playCommand) { player, _ in if player.isPaused { player.togglePause() } }
         handle(commands.pauseCommand) { player, _ in if !player.isPaused { player.togglePause() } }
-        handle(commands.nextTrackCommand) { player, _ in player.next() }
-        handle(commands.previousTrackCommand) { player, _ in player.previous() }
+        // In an audiobook, next/previous move by chapter.
+        handle(commands.nextTrackCommand) { player, _ in
+            player.currentItem?.kind == .audiobook ? player.nextChapter() : player.next()
+        }
+        handle(commands.previousTrackCommand) { player, _ in
+            player.currentItem?.kind == .audiobook ? player.previousChapter() : player.previous()
+        }
+        commands.skipBackwardCommand.preferredIntervals = [15]
+        commands.skipForwardCommand.preferredIntervals = [30]
+        handle(commands.skipBackwardCommand) { player, _ in player.skip(-15) }
+        handle(commands.skipForwardCommand) { player, _ in player.skip(30) }
         handle(commands.changePlaybackPositionCommand) { player, event in
             if let event = event as? MPChangePlaybackPositionCommandEvent { player.seek(to: event.positionTime) }
         }

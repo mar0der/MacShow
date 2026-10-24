@@ -75,6 +75,7 @@ public final class LibraryDatabase: Sendable {
         }
         registerPlaylistMigration(&migrator)
         registerPositionMigration(&migrator)
+        registerBookmarkMigration(&migrator)
         return migrator
     }
 
@@ -109,12 +110,6 @@ public final class LibraryDatabase: Sendable {
         }
     }
 
-    public func setArtworkKey(_ key: String, forItem id: Int64) throws {
-        try writer.write { db in
-            try db.execute(sql: "UPDATE mediaItem SET artworkKey = ? WHERE id = ?", arguments: [key, id])
-        }
-    }
-
     /// Makes the next scan re-read every file, e.g. after the classifier changes.
     public func invalidateAllItems() throws {
         try writer.write { db in try db.execute(sql: "UPDATE mediaItem SET modified = -1") }
@@ -146,12 +141,20 @@ public final class LibraryDatabase: Sendable {
         }
     }
 
-    /// Removes the folder and every item indexed under it.
-    public func removeWatchedFolder(path: String) throws {
+    /// Removes the folder and the items indexed under it, except those inside
+    /// `keepingItemsUnder` (other watched folders that overlap it).
+    public func removeWatchedFolder(path: String, keepingItemsUnder kept: [String] = []) throws {
         let inside = Self.inside(URL(fileURLWithPath: path).canonicalPath)
+        var sql = "DELETE FROM mediaItem WHERE \(inside.sql)"
+        var arguments = inside.arguments
+        for folder in kept {
+            let other = Self.inside(folder)
+            sql += " AND NOT (\(other.sql))"
+            arguments += other.arguments
+        }
         try writer.write { db in
             _ = try WatchedFolder.filter(Column("path") == path).deleteAll(db)
-            try db.execute(sql: "DELETE FROM mediaItem WHERE \(inside.sql)", arguments: inside.arguments)
+            try db.execute(sql: sql, arguments: arguments)
         }
     }
 

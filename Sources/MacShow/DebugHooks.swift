@@ -31,6 +31,11 @@ struct DebugHooks: ViewModifier {
         let show = defaults.string(forKey: "debugShow").flatMap { title in library.index.shows.first { $0.title == title } }
         if let show, defaults.bool(forKey: "debugOpenShow") { path.append(ShowRef(id: show.id)) }
         if let show, defaults.bool(forKey: "debugPlayShow") { player.play(show.episodes) }
+        let book = defaults.string(forKey: "debugBook").flatMap { title in library.index.books.first { $0.title == title } }
+        if let book, defaults.bool(forKey: "debugOpenBook") { path.append(BookRef(id: book.id)) }
+        if let book, defaults.object(forKey: "debugPlayBookPart") != nil {
+            player.play(book.parts, startAt: defaults.integer(forKey: "debugPlayBookPart"), at: defaults.double(forKey: "debugPlayBookAt"))
+        }
         if let album = album("debugPlayAlbum") { player.play(album.tracks) }
         if let id = defaults.string(forKey: "debugOpenWindow") { openWindow(id: id) }
         if defaults.bool(forKey: "debugLogPlayer") {

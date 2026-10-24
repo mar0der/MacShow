@@ -13,6 +13,7 @@ public final class Library {
     /// Resume points by item id. Kept in memory and written through, so saving
     /// a position every few seconds doesn't regroup the whole library.
     public private(set) var positions: [Int64: PlaybackPosition] = [:]
+    public private(set) var bookmarks: [Bookmark] = []
     public private(set) var folders: [WatchedFolder] = []
     public private(set) var isScanning = false
     /// Goes up each time `index` is replaced; cheap to watch for "the library changed".
@@ -31,7 +32,9 @@ public final class Library {
         queue.qualityOfService = .utility
         return queue
     }()
-    @ObservationIgnored private var stillsRequested: Set<Int64> = []
+    @ObservationIgnored private var failedStills: Set<String> = []
+    @ObservationIgnored private var unpublishedPositions: [Int64: PlaybackPosition] = [:]
+    @ObservationIgnored private let writeQueue = DispatchQueue(label: "MacShow.Library.write", qos: .utility)
     @ObservationIgnored private var refreshRunning = false
     @ObservationIgnored private var refreshPending = false
     /// Watched folders as the file system spells them (what FSEvents reports).
@@ -68,6 +71,7 @@ public final class Library {
         self.scanner = LibraryScanner(database: database, artwork: artwork)
         // Re-read at most about once a second while a scan is writing batches.
         positions = (try? database.writer.read(LibraryDatabase.positions)) ?? [:]
+        bookmarks = (try? database.bookmarks()) ?? []
         changes = DatabaseRegionObservation(tracking: Table("mediaItem"), Table("playlist"), Table("playlistEntry"))
             .publisher(in: database.writer)
             .map { _ in () }
@@ -187,14 +191,12 @@ public final class Library {
                     guard watchedRoots.contains(where: { canonical == $0 || canonical.hasPrefix($0 + "/") }) else { continue }
                     await scanner.scan(folder: URL(fileURLWithPath: path))
                 case .remove(let folder):
+                    // Items another watched folder still covers stay, keeping their
+                    // playlist entries and resume points.
                     let database = database
-                    await Task.detached { try? database.removeWatchedFolder(path: folder.path) }.value
+                    let keep = watchedRoots.filter { $0 != URL(fileURLWithPath: folder.path).canonicalPath }
+                    await Task.detached { try? database.removeWatchedFolder(path: folder.path, keepingItemsUnder: keep) }.value
                     reloadFolders()
-                    // Remaining folders that contain the removed one, or sit inside it,
-                    // still own some of what was just deleted.
-                    for remaining in folders where folder.path.hasPrefix(remaining.path + "/") || remaining.path.hasPrefix(folder.path + "/") {
-                        jobs.append(.scan(remaining.path))
-                    }
                 }
             }
             worker = nil
@@ -225,17 +227,34 @@ public final class Library {
 
     // MARK: Resume points
 
-    public func savePosition(_ position: Double, duration: Double, for item: MediaItem) {
+    /// Saves a resume point. The write happens off the main thread; `publish`
+    /// false keeps it out of `positions` too, so the periodic saves during
+    /// playback don't re-render every tile that shows progress.
+    public func savePosition(_ position: Double, duration: Double, for item: MediaItem, publish: Bool = true) {
         guard let id = item.id, duration > 0 else { return }
-        let entry = PlaybackPosition(mediaItemId: id, position: position, duration: duration, updatedAt: Date())
-        positions[id] = entry
-        try? database.savePosition(position, duration: duration, for: id)
+        if publish {
+            positions[id] = PlaybackPosition(mediaItemId: id, position: position, duration: duration, updatedAt: Date())
+        } else {
+            unpublishedPositions[id] = PlaybackPosition(mediaItemId: id, position: position, duration: duration, updatedAt: Date())
+        }
+        let database = database
+        writeQueue.async { try? database.savePosition(position, duration: duration, for: id) }
+    }
+
+    /// The latest resume point for an item, including saves not yet published.
+    public func position(for item: MediaItem) -> PlaybackPosition? {
+        guard let id = item.id else { return nil }
+        let published = positions[id], pending = unpublishedPositions[id]
+        guard let pending, pending.updatedAt > published?.updatedAt ?? .distantPast else { return published }
+        return pending
     }
 
     public func clearPosition(for item: MediaItem) {
         guard let id = item.id else { return }
         positions[id] = nil
-        try? database.clearPosition(for: id)
+        unpublishedPositions[id] = nil
+        let database = database
+        writeQueue.async { try? database.clearPosition(for: id) }
     }
 
     /// Movies and episodes to pick up: ones stopped partway, plus the next
@@ -246,7 +265,7 @@ public final class Library {
             guard let item = index.itemsByID[position.mediaItemId], item.kind == .movie || item.kind == .episode else { continue }
             if position.isResumable {
                 result.append((item, position.updatedAt))
-            } else if position.isFinished, item.kind == .episode, let next = index.episode(after: item),
+            } else if position.isFinished, item.kind == .episode, let next = item.id.flatMap({ index.nextEpisode[$0] }),
                       positions[next.id ?? -1].map({ !$0.isFinished }) ?? true {
                 result.append((next, position.updatedAt))
             }
@@ -255,17 +274,58 @@ public final class Library {
         return result.sorted { $0.date > $1.date }.map(\.item).filter { seen.insert($0.id).inserted }
     }
 
+    /// Books started but not finished, most recently listened first.
+    public var booksInProgress: [Book] {
+        index.books
+            .map { ($0, BookProgress(book: $0, positions: positions)) }
+            .filter { $0.1.isStarted && !$0.1.isFinished }
+            .sorted { ($0.1.lastListened ?? .distantPast) > ($1.1.lastListened ?? .distantPast) }
+            .map(\.0)
+    }
+
+    public func progress(of book: Book) -> BookProgress {
+        BookProgress(book: book, positions: positions)
+    }
+
+    // MARK: Bookmarks
+
+    public func addBookmark(at position: Double, in item: MediaItem) {
+        guard let id = item.id, let bookmark = try? database.addBookmark(at: position, in: id) else { return }
+        bookmarks.append(bookmark)
+    }
+
+    public func deleteBookmark(_ bookmark: Bookmark) {
+        try? database.deleteBookmark(bookmark)
+        bookmarks.removeAll { $0.id == bookmark.id }
+    }
+
     // MARK: Video stills
 
-    /// Generates a still for a video without artwork, once, in the background.
-    public func requestStill(for item: MediaItem) {
-        guard item.artworkKey == nil, let id = item.id, stillsRequested.insert(id).inserted else { return }
+    /// The artwork key for a video's still, generating the still first if needed
+    /// (two at a time, in the background). Stills live only in the artwork store,
+    /// so making one doesn't touch the database or regroup the library. If the
+    /// caller is cancelled (its tile scrolled away) before work starts, it's skipped.
+    public func still(for item: MediaItem) async -> String? {
+        if let key = item.artworkKey { return key }
         let key = ArtworkStore.stillKey(for: item)
-        let artwork = artwork, database = database
-        stillQueue.addOperation {
-            let stored = artwork.contains(key) || VideoThumbnailer.thumbnail(of: item.url).map { artwork.store($0, key: key) } == true
-            if stored { try? database.setArtworkKey(key, forItem: id) }
+        if artwork.contains(key) { return key }
+        guard !failedStills.contains(key) else { return nil }
+
+        let cancelled = CancelFlag()
+        let artwork = artwork
+        let stored = await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                stillQueue.addOperation {
+                    guard !cancelled.isSet else { return continuation.resume(returning: false) }
+                    let ok = artwork.contains(key) || VideoThumbnailer.thumbnail(of: item.url).map { artwork.store($0, key: key) } == true
+                    continuation.resume(returning: ok)
+                }
+            }
+        } onCancel: {
+            cancelled.set()
         }
+        if !stored, !cancelled.isSet { failedStills.insert(key) }
+        return stored ? key : nil
     }
 
     // MARK: Playlists
@@ -281,4 +341,12 @@ public final class Library {
     public func rename(_ playlist: Playlist, to name: String) { try? database.renamePlaylist(playlist, to: name) }
     public func delete(_ playlist: Playlist) { try? database.deletePlaylist(playlist) }
     public func removeEntries(positions: [Int], from playlist: Playlist) { try? database.removeEntries(positions: positions, from: playlist) }
+}
+
+/// Set from a cancellation handler, read from an OperationQueue thread.
+private final class CancelFlag: @unchecked Sendable {
+    private var value = false
+    private let lock = NSLock()
+    var isSet: Bool { lock.withLock { value } }
+    func set() { lock.withLock { value = true } }
 }

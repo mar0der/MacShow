@@ -298,7 +298,8 @@ struct SongsView: View {
         .task(id: SortKey(generation: library.generation, order: sortOrder)) {
             guard sortOrder != [Self.titleOrder] else { return }
             let songs = library.index.songs, order = sortOrder
-            sorted = await Task.detached(priority: .userInitiated) { songs.sorted(using: order) }.value
+            let result = await Task.detached(priority: .userInitiated) { songs.sorted(using: order) }.value
+            if !Task.isCancelled { sorted = result }
         }
     }
 }

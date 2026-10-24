@@ -31,9 +31,10 @@ struct VideoStill: View {
     let item: MediaItem
     var cornerRadius: CGFloat = 8
     @Environment(Library.self) private var library
+    @State private var stillKey: String?
 
     var body: some View {
-        ArtworkView(key: item.artworkKey, title: item.title, cornerRadius: cornerRadius, aspectRatio: 16 / 9)
+        ArtworkView(key: item.artworkKey ?? stillKey, title: item.title, cornerRadius: cornerRadius, aspectRatio: 16 / 9)
             .overlay(alignment: .bottom) {
                 if let saved = item.id.flatMap({ library.positions[$0] }), saved.isResumable || saved.isFinished {
                     if saved.isFinished {
@@ -48,7 +49,7 @@ struct VideoStill: View {
                     }
                 }
             }
-            .onAppear { library.requestStill(for: item) }
+            .task(id: item.id) { stillKey = await library.still(for: item) }
     }
 }
 

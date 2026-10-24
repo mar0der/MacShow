@@ -118,6 +118,13 @@ struct ScannerTests {
         #expect(try library.database.allItems().map(\.url.lastPathComponent).sorted() == ["My.Show.S02E05.720p.mkv", "song.flac"])
     }
 
+    @Test func removingAFolderKeepsItemsAnotherFolderCovers() throws {
+        let database = try LibraryDatabase.inMemory()
+        try database.upsert([makeItem("/Movies/film.mkv"), makeItem("/Movies/TV/s1e1.mkv")])
+        try database.removeWatchedFolder(path: "/Movies", keepingItemsUnder: ["/Movies/TV"])
+        #expect(try database.allItems().map(\.path) == ["/Movies/TV/s1e1.mkv"])
+    }
+
     @Test func missingFolderKeepsItsItems() async throws {
         let library = try TempLibrary()
         await library.scanner.scan(folder: library.folder)

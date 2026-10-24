@@ -10,8 +10,11 @@ public struct PlaybackPosition: Codable, Hashable, Sendable, FetchableRecord, Pe
     public var duration: Double
     public var updatedAt: Date
 
-    /// Within the last 30 seconds (or 98%) counts as watched to the end.
-    public var isFinished: Bool { duration > 0 && (position >= duration - 30 || position / duration >= 0.98) }
+    /// In the last 30 seconds (the credits) or the last 5%, whichever is shorter,
+    /// so a 30-second file isn't "finished" from its first second.
+    public var isFinished: Bool { duration > 0 && remaining <= Self.finishMargin(duration) }
+
+    static func finishMargin(_ duration: Double) -> Double { min(30, duration * 0.05) }
 
     /// Worth resuming: past the first few seconds and not finished.
     public var isResumable: Bool { position >= 10 && !isFinished }

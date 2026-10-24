@@ -13,10 +13,12 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 32) {
                     let resume = library.continueWatching
-                    if !resume.isEmpty {
+                    let books = library.booksInProgress
+                    if !resume.isEmpty || !books.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Jump back in").font(.title3.weight(.semibold)).padding(.horizontal, 28)
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 420), spacing: 16)], spacing: 16) {
+                                ForEach(books.prefix(3)) { BookJumpCard(book: $0) }
                                 ForEach(resume.prefix(6)) { JumpBackInCard(item: $0) }
                             }
                             .padding(.horizontal, 28)
@@ -108,6 +110,33 @@ struct JumpBackInCard: View {
         } else {
             player.play([item])
         }
+    }
+}
+
+/// "Jump back in" for an audiobook: opens the book's page.
+struct BookJumpCard: View {
+    let book: Book
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        let progress = library.progress(of: book)
+        NavigationLink(value: BookRef(id: book.id)) {
+            HStack(spacing: 14) {
+                ArtworkView(key: book.artworkKey, title: book.title, cornerRadius: 6).frame(width: 72, height: 72)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Audiobook").font(.caption2.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                    Text(book.title).font(.callout.weight(.semibold)).lineLimit(1)
+                    Text("\(Format.duration(progress.remaining)) left").font(.caption).foregroundStyle(.secondary)
+                    ProgressBar(progress: progress.fraction).padding(.top, 2)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.08)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

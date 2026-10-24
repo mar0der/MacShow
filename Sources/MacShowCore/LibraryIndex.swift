@@ -58,14 +58,8 @@ public struct LibraryIndex: Sendable {
 
     public init() {}
 
-    /// The episode after `episode` in its show, if any.
-    public func episode(after episode: MediaItem) -> MediaItem? {
-        guard let show = shows.first(where: { $0.episodes.contains { $0.id == episode.id } }),
-              let position = show.episodes.firstIndex(where: { $0.id == episode.id }),
-              position + 1 < show.episodes.count
-        else { return nil }
-        return show.episodes[position + 1]
-    }
+    /// Episode id → the episode after it in its show.
+    public var nextEpisode: [Int64: MediaItem] = [:]
 
     public var isEmpty: Bool {
         songs.isEmpty && movies.isEmpty && homeVideos.isEmpty && shows.isEmpty && books.isEmpty
@@ -122,6 +116,11 @@ public struct LibraryIndex: Sendable {
             }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
 
+        for show in shows {
+            for (episode, next) in zip(show.episodes, show.episodes.dropFirst()) {
+                if let id = episode.id { nextEpisode[id] = next }
+            }
+        }
         recentlyAdded = Array(items.sorted { $0.addedAt > $1.addedAt }.prefix(20))
         itemsByID = Dictionary(uniqueKeysWithValues: items.compactMap { item in item.id.map { ($0, item) } })
     }

@@ -6,6 +6,7 @@ import SwiftUI
 struct AlbumRef: Hashable { let id: String }
 struct ArtistRef: Hashable { let id: String }
 struct ShowRef: Hashable { let id: String }
+struct BookRef: Hashable { let id: String }
 
 extension View {
     func libraryDestinations() -> some View {
@@ -17,6 +18,9 @@ extension View {
         }
         .navigationDestination(for: ShowRef.self) { ref in
             Resolved(ref.id, in: \.shows) { ShowDetailView(show: $0) }.withPlayerBar()
+        }
+        .navigationDestination(for: BookRef.self) { ref in
+            Resolved(ref.id, in: \.books) { BookDetailView(book: $0) }.withPlayerBar()
         }
     }
 }

@@ -29,7 +29,9 @@ public enum VideoThumbnailer {
         let duration = format.pointee.duration > 0 ? Double(format.pointee.duration) / 1_000_000 : 0
         let target = min(duration * 0.1, 300)
         if target > 1 {
-            av_seek_frame(format, -1, Int64(target * 1_000_000), AVSEEK_FLAG_BACKWARD)
+            // Timestamps start at start_time (large in MPEG-TS recordings), not zero.
+            let start = format.pointee.start_time > 0 ? format.pointee.start_time : 0
+            av_seek_frame(format, -1, start + Int64(target * 1_000_000), AVSEEK_FLAG_BACKWARD)
             avcodec_flush_buffers(codec)
         }
 
@@ -70,6 +72,12 @@ public enum VideoThumbnailer {
             width, height, AV_PIX_FMT_RGBA, Int32(SWS_BILINEAR.rawValue), nil, nil, nil
         ) else { return nil }
         defer { sws_freeContext(scaler) }
+        // swscale assumes BT.601; HD material is usually BT.709. AVColorSpace values
+        // match the SWS_CS_* numbers sws_getCoefficients takes.
+        var colorspace = Int32(frame.pointee.colorspace.rawValue)
+        if frame.pointee.colorspace == AVCOL_SPC_UNSPECIFIED { colorspace = sourceHeight >= 720 ? 1 : 5 }  // SWS_CS_ITU709 : SWS_CS_ITU601
+        let fullRange: Int32 = frame.pointee.color_range == AVCOL_RANGE_JPEG ? 1 : 0
+        sws_setColorspaceDetails(scaler, sws_getCoefficients(colorspace), fullRange, sws_getCoefficients(5), 1, 0, 1 << 16, 1 << 16)
 
         let bytesPerRow = Int(width) * 4
         var pixels = Data(count: bytesPerRow * Int(height))
