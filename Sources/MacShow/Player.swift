@@ -60,8 +60,12 @@ final class Player {
     @ObservationIgnored private var sleepTask: Task<Void, Never>?
     /// Where "end of chapter" pauses (seconds into the file).
     @ObservationIgnored private var sleepChapterEnd: Double?
-    /// Set when you seek or skip, so "end of chapter" moves to the chapter you're in now.
+    /// Set when you seek or skip, so "end of chapter" moves to the chapter you're
+    /// in now. Re-targeted on the first position after mpv lands (its position
+    /// update arrives after the restart event), or after 1.5 s if no restart comes.
     @ObservationIgnored private var sleepNeedsRetarget = false
+    @ObservationIgnored private var sleepRetargetReady = false
+    @ObservationIgnored private var sleepMoveTime = Date.distantPast
     /// Where each queued file should start (resume points, or a chapter or
     /// bookmark you picked), read by mpv's on_load hook on the event thread.
     @ObservationIgnored nonisolated private let startTimes = StartTimes()
@@ -133,11 +137,11 @@ final class Player {
     /// they were left.
     func play(_ items: [MediaItem], startAt index: Int = 0, fromBeginning: Bool = false, at time: Double? = nil) {
         guard items.indices.contains(index) else { return }
-        // Leave out files on a drive that isn't connected.
-        if let library, items.contains(where: { !library.isAvailable($0) }) {
-            let reachable = items.indices.filter { library.isAvailable(items[$0]) }
-            guard let start = reachable.firstIndex(of: index) else { return }
-            return play(reachable.map { items[$0] }, startAt: start, fromBeginning: fromBeginning, at: time)
+        // Files on a drive that isn't connected: play a reachable copy, or leave them out.
+        if let library, items.contains(where: { library.playableCopy(of: $0) != $0 }) {
+            let reachable = items.indices.compactMap { offset in library.playableCopy(of: items[offset]).map { (offset, $0) } }
+            guard let start = reachable.firstIndex(where: { $0.0 == index }) else { return }
+            return play(reachable.map(\.1), startAt: start, fromBeginning: fromBeginning, at: time)
         }
         savePosition()
         command("stop")
@@ -249,7 +253,10 @@ final class Player {
     /// Marks a move you made (seek, skip, chapter or track change) so "end of
     /// chapter" re-targets once mpv has landed.
     private func userMoved() {
-        if sleepTimer == .endOfChapter { sleepNeedsRetarget = true }
+        guard sleepTimer == .endOfChapter else { return }
+        sleepNeedsRetarget = true
+        sleepRetargetReady = false
+        sleepMoveTime = Date()
     }
 
     /// mpv sets up its video output when a file loads; if the video window
@@ -460,10 +467,7 @@ final class Player {
             case MPV_EVENT_PLAYBACK_RESTART:  // after a seek or a new file starts
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
-                        if self.sleepNeedsRetarget {
-                            self.sleepNeedsRetarget = false
-                            self.sleepChapterEnd = self.chapterEnd(at: self.position)
-                        }
+                        if self.sleepNeedsRetarget { self.sleepRetargetReady = true }
                         self.nowPlaying?.update()
                     }
                 }
@@ -498,6 +502,10 @@ final class Player {
             if bucket != lastSavedSecond {
                 lastSavedSecond = bucket
                 savePosition(publish: false)
+            }
+            if sleepNeedsRetarget, sleepRetargetReady || Date().timeIntervalSince(sleepMoveTime) > 1.5 {
+                sleepNeedsRetarget = false
+                sleepChapterEnd = chapterEnd(at: position)
             }
             if sleepTimer == .endOfChapter, !sleepNeedsRetarget, let end = sleepChapterEnd, end < duration - 1, position >= end - 0.3 {
                 if !isPaused { togglePause() }
@@ -537,7 +545,7 @@ final class Player {
             parts.append(audio.uppercased())
         }
         if let rate = get("current-tracks/audio/demux-samplerate").flatMap(Double.init) {
-            parts.append("\((rate / 1000).formatted()) kHz")
+            parts.append(String(format: "%g kHz", rate / 1000))
         }
         return (parts.joined(separator: " · "), video != nil)
     }

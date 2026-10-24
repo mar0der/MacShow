@@ -122,3 +122,33 @@ struct ArtworkFetcherTests {
         #expect(ArtworkFetcher.normalize("Coup De Grâce") == "coupdegrace")
     }
 }
+
+struct DuplicateRulesTests {
+    @Test func untaggedSongsWithTheSameNameAreNotMerged() {
+        let a = makeItem("/Music/Rip A/Track 01.wav", title: "Track 01")
+        let b = makeItem("/Music/Rip B/Track 01.wav", title: "Track 01")
+        let index = LibraryIndex(items: [a, b])
+        #expect(index.songs.count == 2)
+        #expect(index.duplicates.isEmpty)
+    }
+
+    @Test func copiesAcrossALengthBoundaryAreMergedButDifferentDiscsAreNot() {
+        var first = makeItem("/a/05.flac", title: "Song", artist: "Band", album: "Live", track: 5, disc: 1)
+        first.duration = 179.98
+        var second = makeItem("/b/05.m4a", title: "Song", artist: "Band", album: "Live", track: 5, disc: 1)
+        second.duration = 180.03
+        var otherDisc = makeItem("/a/2-05.flac", title: "Song", artist: "Band", album: "Live", track: 5, disc: 2)
+        otherDisc.duration = 180
+        let index = LibraryIndex(items: [first, second, otherDisc])
+        #expect(index.songs.count == 2)
+        #expect(index.duplicates.count == 1)
+    }
+
+    @Test func aiffCountsAsLossless() {
+        var aiff = makeItem("/a/x.aiff")
+        aiff.formatInfo = "PCM_S16BE · 44.1 kHz"
+        var aac = makeItem("/b/x.m4a")
+        aac.formatInfo = "AAC · 48 kHz"
+        #expect(LibraryIndex.isBetterCopy(aiff, aac))
+    }
+}

@@ -26,7 +26,7 @@ public struct FileMetadata: Sendable {
     public var formatInfo: String {
         var parts = [videoCodec, audioCodec].compactMap { $0?.uppercased() }
         if let sampleRate, sampleRate > 0 {
-            parts.append("\((Double(sampleRate) / 1000).formatted()) kHz")
+            parts.append(String(format: "%g kHz", Double(sampleRate) / 1000))  // "44.1", in every locale
         }
         return parts.joined(separator: " · ")
     }

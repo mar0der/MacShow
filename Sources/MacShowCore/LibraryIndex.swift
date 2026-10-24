@@ -61,6 +61,8 @@ public struct LibraryIndex: Sendable {
     /// Songs found more than once (the same track in several folders), best copy
     /// first. Only the best copy appears in albums, artists and songs.
     public var duplicates: [[MediaItem]] = []
+    /// Kept song id → all its copies, best first (to fall back to a reachable copy).
+    public var copies: [Int64: [MediaItem]] = [:]
     /// Episode id → the episode after it in its show.
     public var nextEpisode: [Int64: MediaItem] = [:]
 
@@ -72,6 +74,9 @@ public struct LibraryIndex: Sendable {
         let byKind = Dictionary(grouping: items, by: \.kind)
         let (music, duplicateGroups) = Self.removingDuplicates(byKind[.music] ?? [])
         duplicates = duplicateGroups
+        for group in duplicateGroups {
+            if let id = group[0].id { copies[id] = group }
+        }
 
         songs = music.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         songSearchKeys = songs.map { [$0.title, $0.artist, $0.album].compactMap { $0 }.joined(separator: " ").lowercased() }
@@ -135,19 +140,33 @@ public struct LibraryIndex: Sendable {
 
     static let homeVideoMaxDuration: Double = 20 * 60
 
-    /// Groups copies of the same song (same title, artist, album, track number and
-    /// length to within a couple of seconds) and keeps the best one of each.
+    /// Groups copies of the same song and keeps the best one of each. Only
+    /// songs tagged with an artist and an album are compared (untagged rips named
+    /// "Track 01" are not the same song), and copies must agree on disc, track
+    /// number and title and be within two seconds of each other in length.
     static func removingDuplicates(_ songs: [MediaItem]) -> (kept: [MediaItem], duplicates: [[MediaItem]]) {
-        let groups = Dictionary(grouping: songs) { song in
-            [song.title, song.artist ?? "", song.album ?? "", song.trackNumber.map(String.init) ?? "", String(Int(song.duration / 3))]
+        var kept = songs.filter { $0.artist == nil || $0.album == nil }
+        var duplicates: [[MediaItem]] = []
+        let tagged = songs.filter { $0.artist != nil && $0.album != nil }
+        let groups = Dictionary(grouping: tagged) { song in
+            [song.title, song.artist!, song.album!, String(song.discNumber ?? 1), song.trackNumber.map(String.init) ?? ""]
                 .joined(separator: "\u{1F}").lowercased()
         }
-        var kept: [MediaItem] = []
-        var duplicates: [[MediaItem]] = []
         for group in groups.values {
-            let ranked = group.sorted(by: isBetterCopy)
-            kept.append(ranked[0])
-            if ranked.count > 1 { duplicates.append(ranked) }
+            // Split into runs of similar length: 179.98 s and 180.03 s are one song, 3:00 and 4:10 aren't.
+            var clusters: [[MediaItem]] = []
+            for song in group.sorted(by: { $0.duration < $1.duration }) {
+                if let last = clusters.last?.last, song.duration - last.duration <= 2 {
+                    clusters[clusters.count - 1].append(song)
+                } else {
+                    clusters.append([song])
+                }
+            }
+            for cluster in clusters {
+                let ranked = cluster.sorted(by: isBetterCopy)
+                kept.append(ranked[0])
+                if ranked.count > 1 { duplicates.append(ranked) }
+            }
         }
         duplicates.sort { $0[0].title.localizedStandardCompare($1[0].title) == .orderedAscending }
         return (kept, duplicates)
@@ -157,7 +176,7 @@ public struct LibraryIndex: Sendable {
     static func isBetterCopy(_ a: MediaItem, _ b: MediaItem) -> Bool {
         func quality(_ item: MediaItem) -> (Int, Double, Int64) {
             let parts = item.formatInfo.components(separatedBy: " · ")
-            let lossless = ["FLAC", "ALAC", "WAV", "PCM_S16LE", "PCM_S24LE", "APE", "WAVPACK", "DSD"].contains { parts.first?.hasPrefix($0) ?? false }
+            let lossless = ["FLAC", "ALAC", "PCM", "APE", "WAVPACK", "TTA", "DSD", "MLP", "TRUEHD"].contains { parts.first?.hasPrefix($0) ?? false }
             let rate = parts.last.flatMap { Double($0.replacingOccurrences(of: " kHz", with: "")) } ?? 0
             return (lossless ? 1 : 0, rate, item.fileSize)
         }

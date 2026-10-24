@@ -5,7 +5,7 @@ import Foundation
 /// back to the file and folder names.
 public enum Classifier {
     /// Bump when the rules below change, so existing libraries are re-read once.
-    public static let version = 4
+    public static let version = 5
 
     public static let audioExtensions: Set<String> = [
         "mp3", "m4a", "m4b", "m4p", "aac", "flac", "alac", "wav", "aif", "aiff", "ogg", "oga",

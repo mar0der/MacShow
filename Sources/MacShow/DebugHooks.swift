@@ -39,6 +39,10 @@ struct DebugHooks: ViewModifier {
                 Task {
                     try? await Task.sleep(for: .seconds(1))
                     player.sleepTimer = .endOfChapter
+                    if defaults.bool(forKey: "debugNextChapter") {
+                        try? await Task.sleep(for: .seconds(1))
+                        player.nextChapter()
+                    }
                 }
             }
         }

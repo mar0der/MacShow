@@ -118,7 +118,7 @@ struct BookDetailView: View {
     /// Which of this book's files is playing, by identity, not by queue
     /// position (the book may sit behind songs in the queue).
     private var playingPart: Int? {
-        player.currentItem.flatMap { book.parts.firstIndex(of: $0) }
+        player.currentItem.flatMap { current in book.parts.firstIndex { $0.id == current.id } }
     }
 
     private var isPlayingThis: Bool { playingPart != nil }

@@ -16,7 +16,8 @@ public struct ArtworkFetcher: Sendable {
 
     let session: URLSession
 
-    public init(session: URLSession = .shared) {
+    /// Ephemeral: no cookies or cache go along with the lookups.
+    public init(session: URLSession = URLSession(configuration: .ephemeral)) {
         self.session = session
     }
 
@@ -44,7 +45,9 @@ public struct ArtworkFetcher: Sendable {
               let small = match.artworkUrl100,
               let large = URL(string: small.replacingOccurrences(of: "100x100bb", with: "600x600bb"))
         else { return .notFound }
-        guard let (image, _) = try? await session.data(from: large) else { return .failed }
+        guard let (image, imageReply) = try? await session.data(from: large),
+              (imageReply as? HTTPURLResponse)?.statusCode == 200
+        else { return .failed }
         return .found(image)
     }
 

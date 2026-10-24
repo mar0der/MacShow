@@ -51,7 +51,7 @@ public final class Library {
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
 
     /// Settings key: download cover art for albums that have none (default on).
-    public static let fetchArtworkKey = "fetchMissingArtwork"
+    nonisolated public static let fetchArtworkKey = "fetchMissingArtwork"
     @ObservationIgnored private var started = false
 
     /// Scans and folder removals run one at a time, in order, so two scans never
@@ -179,9 +179,18 @@ public final class Library {
         }
     }
 
-    /// False for items on a drive that isn't connected.
+    /// False for items on a drive that isn't connected (and with no other copy that is).
     public func isAvailable(_ item: MediaItem) -> Bool {
-        offlineFolders.isEmpty || !offlineFolders.contains { item.path.hasPrefix($0 + "/") }
+        playableCopy(of: item) != nil
+    }
+
+    /// The item itself if its drive is connected, else a reachable duplicate copy.
+    public func playableCopy(of item: MediaItem) -> MediaItem? {
+        func reachable(_ copy: MediaItem) -> Bool {
+            offlineFolders.isEmpty || !offlineFolders.contains { copy.path.hasPrefix($0 + "/") }
+        }
+        if reachable(item) { return item }
+        return item.id.flatMap { index.copies[$0] }?.first(where: reachable)
     }
 
     public func rescanAll() {
@@ -239,6 +248,7 @@ public final class Library {
             }
             worker = nil
             isScanning = false
+            fetchMissingArtwork()
         }
     }
 
@@ -366,23 +376,40 @@ public final class Library {
     private func fetchMissingArtwork() {
         guard UserDefaults.standard.object(forKey: Self.fetchArtworkKey) as? Bool ?? true, artworkTask == nil else { return }
         let tried = (try? database.artworkLookups()) ?? []
-        let albums = index.albums.filter { $0.artworkKey == nil && !tried.contains($0.id) }
+        // Only albums with real tags: a title that fell back to the folder name, or
+        // "Unknown Artist", would send folder names to Apple.
+        let albums = index.albums.filter { album in
+            album.artworkKey == nil && !tried.contains(album.id) && album.artist != "Unknown Artist"
+                && album.tracks.contains { $0.album != nil }
+        }
         guard !albums.isEmpty else { return }
         let database = database, artwork = artwork
         artworkTask = Task.detached(priority: .utility) { [weak self] in
             let fetcher = ArtworkFetcher()
+            var found: [(key: String, paths: [String], albumId: String)] = []
+            // One write for several covers, so the library isn't regrouped every few seconds.
+            func saveFound() {
+                for cover in found {
+                    try? database.setArtworkKey(cover.key, forPaths: cover.paths)
+                    try? database.recordArtworkLookup(albumId: cover.albumId)
+                }
+                found.removeAll()
+            }
             for album in albums {
+                // Turning the setting off stops a run that's under way.
+                guard !Task.isCancelled, UserDefaults.standard.object(forKey: Library.fetchArtworkKey) as? Bool ?? true else { break }
                 switch await fetcher.artwork(artist: album.artist, album: album.title) {
                 case .found(let data):
-                    if let key = artwork.store(data) { try? database.setArtworkKey(key, forPaths: album.tracks.map(\.path)) }
-                    try? database.recordArtworkLookup(albumId: album.id)
+                    if let key = artwork.store(data) { found.append((key, album.tracks.map(\.path), album.id)) }
                 case .notFound:
                     try? database.recordArtworkLookup(albumId: album.id)
                 case .failed:
                     break
                 }
+                if found.count >= 10 { saveFound() }
                 try? await Task.sleep(for: .seconds(3))  // the Search API allows about 20 requests a minute
             }
+            saveFound()
             await self?.artworkLookupsFinished()
         }
     }
