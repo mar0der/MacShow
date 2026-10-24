@@ -32,7 +32,7 @@ Done when it plays an MKV, a FLAC and an M4B. Verified on an HEVC/AC-3 MKV, a
 
 - Watched folders, the scanner and the database (see [Library](#library)).
 - Home screen and a plain Albums / Movies / Books list, enough to browse and play.
-- Real app bundle (Xcode project) so it launches like any Mac app.
+- Real, sandboxed app bundle (built by a script) so it launches like any Mac app.
 
 Done when pointing it at `~/Music` lists every album with its cover art, and a
 file copied into a watched folder shows up within seconds without a restart.
@@ -80,16 +80,19 @@ Done when an album downloaded in the Music app appears in MacShow on its own.
 
 ### Phase 6: Ship
 
-Two builds from the same code (see [Distribution](#distribution)):
+The direct download first (see [Distribution](#distribution)):
 
-- **Direct:** Developer ID signing, notarization, a DMG, auto-update (Sparkle)
-  and a Homebrew cask.
-- **Mac App Store:** the same sandboxed app without Sparkle, updated through the
-  store.
+- Developer ID signing, notarization, a DMG, auto-update (Sparkle) and a
+  Homebrew cask.
 - Third-party licenses shown in the app (libmpv, FFmpeg and its libraries).
 
-Done when a fresh Mac can install MacShow both ways, open it with no warnings,
+Done when a fresh Mac can download, open and update MacShow with no warnings,
 and see `~/Music` without being asked for permission.
+
+### Later: Mac App Store
+
+A second build of the same sandboxed app, without Sparkle and with the store-safe
+Picture in Picture. Mostly packaging, because the app is sandboxed from the start.
 
 ## Library
 
@@ -166,8 +169,10 @@ iPhone app.
 
 ## Distribution
 
-MacShow ships both on the Mac App Store and as a direct download. Both builds are
-sandboxed, so there is one code path for file access.
+MacShow ships as a direct download first; a Mac App Store build can follow. Both
+are sandboxed from day one, so there is one code path for file access and the
+store build doesn't need a rewrite. Store-only differences sit behind an
+`APPSTORE` build flag.
 
 **Folder access in the sandbox:**
 
