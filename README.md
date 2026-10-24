@@ -12,6 +12,8 @@ Requires macOS 14+ and Xcode. Run it with:
 swift run MacShow [file]
 ```
 
+See the [roadmap](ROADMAP.md) for where it's going.
+
 ## License
 
 [MIT](LICENSE)
