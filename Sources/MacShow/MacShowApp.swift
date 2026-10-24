@@ -17,6 +17,7 @@ struct MacShowApp: App {
         }
         let player = Player()
         player.nowPlaying = NowPlaying(player: player, artwork: library.artwork)
+        player.library = library
         _library = State(initialValue: library)
         _player = State(initialValue: player)
     }

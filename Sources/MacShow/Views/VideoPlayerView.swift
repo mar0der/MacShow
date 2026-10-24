@@ -1,6 +1,44 @@
 import MacShowCore
 import SwiftUI
 
+/// Subtitle and audio-track choices, plus adding a subtitle file.
+struct TracksMenu: View {
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        let subtitles = player.tracks("sub")
+        let audio = player.tracks("audio")
+        Menu {
+            Section("Subtitles") {
+                Toggle("Off", isOn: Binding(get: { !subtitles.contains(where: \.isSelected) }, set: { _ in player.select(nil, type: "sub") }))
+                ForEach(subtitles) { track in
+                    Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "sub") }))
+                }
+                Button("Add Subtitle File…") {
+                    let panel = NSOpenPanel()
+                    panel.allowedContentTypes = []
+                    panel.allowsOtherFileTypes = true
+                    panel.message = "Choose a subtitle file (SRT, ASS, VTT…)"
+                    if panel.runModal() == .OK, let url = panel.url { player.addSubtitleFile(url) }
+                }
+            }
+            if audio.count > 1 {
+                Section("Audio") {
+                    ForEach(audio) { track in
+                        Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "audio") }))
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: subtitles.contains(where: \.isSelected) ? "captions.bubble.fill" : "captions.bubble")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Subtitles and Audio")
+    }
+}
+
 /// The video window: the picture fills it, controls fade in when the mouse moves.
 struct VideoPlayerView: View {
     @Environment(Player.self) private var player
@@ -11,7 +49,7 @@ struct VideoPlayerView: View {
     var body: some View {
         @Bindable var player = player
         ZStack {
-            VideoView(layer: player.layer).ignoresSafeArea()
+            VideoView(layer: player.layer) { player.reattachVideoOutput() }.ignoresSafeArea()
 
             VStack {
                 HStack(spacing: 12) {
@@ -59,6 +97,7 @@ struct VideoPlayerView: View {
                         .imageScale(.large)
                         Spacer()
                         HStack(spacing: 14) {
+                            TracksMenu()
                             Button { NSApp.keyWindow?.toggleFullScreen(nil) } label: {
                                 Image(systemName: "arrow.up.left.and.arrow.down.right")
                             }
@@ -77,6 +116,11 @@ struct VideoPlayerView: View {
             .animation(.easeInOut(duration: 0.25), value: controlsVisible)
         }
         .background(.black)
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.leftArrow) { player.skip(-10); showControls(); return .handled }
+        .onKeyPress(.rightArrow) { player.skip(10); showControls(); return .handled }
+        .onKeyPress("f") { NSApp.keyWindow?.toggleFullScreen(nil); return .handled }
         .onContinuousHover { _ in showControls() }
         .onAppear {
             // Never sit empty (e.g. if macOS restores the window at launch).

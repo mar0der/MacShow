@@ -74,6 +74,7 @@ public final class LibraryDatabase: Sendable {
             }
         }
         registerPlaylistMigration(&migrator)
+        registerPositionMigration(&migrator)
         return migrator
     }
 
@@ -105,6 +106,12 @@ public final class LibraryDatabase: Sendable {
                     try item.insert(db)
                 }
             }
+        }
+    }
+
+    public func setArtworkKey(_ key: String, forItem id: Int64) throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE mediaItem SET artworkKey = ? WHERE id = ?", arguments: [key, id])
         }
     }
 

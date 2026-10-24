@@ -6,22 +6,19 @@ struct SearchResultsView: View {
     let query: String
     @Environment(Library.self) private var library
 
-    /// True if every word of the query appears in one of `fields`.
-    private func matches(_ fields: String?...) -> Bool {
-        let text = fields.compactMap { $0?.lowercased() }.joined(separator: " ")
-        return query.lowercased().split(separator: " ").allSatisfy { text.contains($0) }
-    }
-
     var body: some View {
         let index = library.index
-        let artists = index.artists.filter { matches($0.name) }
-        let albums = index.albums.filter { matches($0.title, $0.artist) }
-        let songs = index.songs.filter { matches($0.title, $0.artist, $0.album) }
-        let movies = index.movies.filter { matches($0.title) }
-        let books = index.books.filter { matches($0.title, $0.author) }
+        let terms = query.lowercased().split(separator: " ").map(String.init)
+        let matches = { (text: String) in terms.allSatisfy(text.contains) }
+        let artists = index.artists.filter { matches($0.name.lowercased()) }
+        let albums = index.albums.filter { matches("\($0.title) \($0.artist)".lowercased()) }
+        let songs = zip(index.songs, index.songSearchKeys).lazy.filter { matches($0.1) }.prefix(50).map(\.0)
+        let movies = (index.movies + index.homeVideos).filter { matches($0.title.lowercased()) }
+        let shows = index.shows.filter { matches($0.title.lowercased()) }
+        let books = index.books.filter { matches("\($0.title) \($0.author ?? "")".lowercased()) }
 
         Group {
-            if artists.isEmpty, albums.isEmpty, songs.isEmpty, movies.isEmpty, books.isEmpty {
+            if artists.isEmpty, albums.isEmpty, songs.isEmpty, movies.isEmpty, shows.isEmpty, books.isEmpty {
                 ContentUnavailableView.search(text: query)
             } else {
                 ScrollView {
@@ -29,7 +26,7 @@ struct SearchResultsView: View {
                         if !artists.isEmpty {
                             Shelf(title: "Artists") {
                                 ForEach(artists.prefix(20)) { artist in
-                                    NavigationLink(value: artist) {
+                                    NavigationLink(value: ArtistRef(id: artist.id)) {
                                         VStack {
                                             ArtworkView(key: artist.artworkKey, title: artist.name, cornerRadius: 70).frame(width: 120)
                                             Text(artist.name).font(.callout.weight(.semibold)).lineLimit(1)
@@ -46,12 +43,26 @@ struct SearchResultsView: View {
                         if !songs.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("Songs").font(.title3.weight(.semibold))
-                                TrackList(tracks: Array(songs.prefix(50)), showsArtist: true, numbered: false)
+                                TrackList(tracks: Array(songs), showsArtist: true, numbered: false)
                             }
                             .padding(.horizontal, 28)
                         }
+                        if !shows.isEmpty {
+                            Shelf(title: "TV Shows") {
+                                ForEach(shows.prefix(20)) { show in
+                                    NavigationLink(value: ShowRef(id: show.id)) {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            VideoStill(item: show.episodes[0])
+                                            Text(show.title).font(.callout.weight(.semibold)).lineLimit(1)
+                                        }
+                                        .frame(width: 240)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
                         if !movies.isEmpty {
-                            Shelf(title: "Movies") { ForEach(movies.prefix(20)) { MovieTile(movie: $0).frame(width: 240) } }
+                            Shelf(title: "Videos") { ForEach(movies.prefix(20)) { MovieTile(movie: $0).frame(width: 240) } }
                         }
                         if !books.isEmpty {
                             Shelf(title: "Audiobooks") { ForEach(books.prefix(20)) { BookTile(book: $0).frame(width: 160) } }

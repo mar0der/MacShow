@@ -51,8 +51,21 @@ public struct LibraryIndex: Sendable {
     public var shows: [Show] = []
     public var books: [Book] = []
     public var recentlyAdded: [MediaItem] = []
+    public var itemsByID: [Int64: MediaItem] = [:]
+    /// "title artist album" lowercased, parallel to `songs`, so search doesn't
+    /// re-lowercase the library on every keystroke.
+    public var songSearchKeys: [String] = []
 
     public init() {}
+
+    /// The episode after `episode` in its show, if any.
+    public func episode(after episode: MediaItem) -> MediaItem? {
+        guard let show = shows.first(where: { $0.episodes.contains { $0.id == episode.id } }),
+              let position = show.episodes.firstIndex(where: { $0.id == episode.id }),
+              position + 1 < show.episodes.count
+        else { return nil }
+        return show.episodes[position + 1]
+    }
 
     public var isEmpty: Bool {
         songs.isEmpty && movies.isEmpty && homeVideos.isEmpty && shows.isEmpty && books.isEmpty
@@ -63,6 +76,7 @@ public struct LibraryIndex: Sendable {
         let music = byKind[.music] ?? []
 
         songs = music.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        songSearchKeys = songs.map { [$0.title, $0.artist, $0.album].compactMap { $0 }.joined(separator: " ").lowercased() }
         albums = Dictionary(grouping: music, by: Self.albumKey)
             .map { key, tracks in
                 let sorted = tracks.sorted(by: Self.trackOrder)
@@ -109,6 +123,7 @@ public struct LibraryIndex: Sendable {
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
 
         recentlyAdded = Array(items.sorted { $0.addedAt > $1.addedAt }.prefix(20))
+        itemsByID = Dictionary(uniqueKeysWithValues: items.compactMap { item in item.id.map { ($0, item) } })
     }
 
     static let homeVideoMaxDuration: Double = 20 * 60

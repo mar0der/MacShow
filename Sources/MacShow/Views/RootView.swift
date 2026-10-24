@@ -2,10 +2,10 @@ import MacShowCore
 import SwiftUI
 
 enum SidebarItem: Hashable, RawRepresentable {
-    case home, albums, artists, songs, movies, books
+    case home, albums, artists, songs, movies, shows, homeVideos, books
     case playlist(Int64)
 
-    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .books]
+    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .homeVideos, .books]
 
     init?(rawValue: String) {
         if rawValue.hasPrefix("playlist:"), let id = Int64(rawValue.dropFirst("playlist:".count)) {
@@ -24,6 +24,8 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .artists: "artists"
         case .songs: "songs"
         case .movies: "movies"
+        case .shows: "shows"
+        case .homeVideos: "homeVideos"
         case .books: "books"
         case .playlist(let id): "playlist:\(id)"
         }
@@ -36,6 +38,8 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .artists: "Artists"
         case .songs: "Songs"
         case .movies: "Movies"
+        case .shows: "TV Shows"
+        case .homeVideos: "Home Videos"
         case .books: "All Books"
         case .playlist: "Playlist"
         }
@@ -48,6 +52,8 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .artists: "music.mic"
         case .songs: "music.note"
         case .movies: "film"
+        case .shows: "tv"
+        case .homeVideos: "video"
         case .books: "book"
         case .playlist: "music.note.list"
         }
@@ -70,8 +76,7 @@ struct RootView: View {
             NavigationStack(path: $path) {
                 detail
                     .withPlayerBar()
-                    .navigationDestination(for: Album.self) { AlbumDetailView(album: $0).withPlayerBar() }
-                    .navigationDestination(for: Artist.self) { ArtistDetailView(artist: $0).withPlayerBar() }
+                    .libraryDestinations()
             }
             .onChange(of: selection) { _, _ in path = NavigationPath() }
             #if DEBUG
@@ -92,7 +97,11 @@ struct RootView: View {
                 row(.artists)
                 row(.songs)
             }
-            Section("Video") { row(.movies) }
+            Section("Video") {
+                row(.movies)
+                row(.shows)
+                row(.homeVideos)
+            }
             Section("Audiobooks") { row(.books) }
             Section {
                 ForEach(library.playlists) { contents in
@@ -145,7 +154,9 @@ struct RootView: View {
             case .albums: AlbumsView()
             case .artists: ArtistsView()
             case .songs: SongsView()
-            case .movies: MoviesView()
+            case .movies: VideoGridView(title: "Movies", icon: "film", videos: library.index.movies)
+            case .shows: ShowsView()
+            case .homeVideos: VideoGridView(title: "Home Videos", icon: "video", videos: library.index.homeVideos)
             case .books: BooksView()
             case .playlist(let id):
                 if let contents = library.playlists.first(where: { $0.playlist.id == id }) {

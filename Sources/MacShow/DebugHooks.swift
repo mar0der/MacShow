@@ -6,6 +6,7 @@ import SwiftUI
 ///   -debugOpenAlbum "Kamikaze"   pushes that album's page
 ///   -debugPlayAlbum "Kamikaze"   starts playing it
 ///   -debugOpenWindow mini        opens a window by id
+///   -debugShow "Name" -debugOpenShow YES / -debugPlayShow YES
 struct DebugHooks: ViewModifier {
     @Binding var path: NavigationPath
     @Environment(Library.self) private var library
@@ -26,14 +27,17 @@ struct DebugHooks: ViewModifier {
         func album(_ key: String) -> Album? {
             defaults.string(forKey: key).flatMap { title in library.index.albums.first { $0.title == title } }
         }
-        if let album = album("debugOpenAlbum") { path.append(album) }
+        if let album = album("debugOpenAlbum") { path.append(AlbumRef(id: album.id)) }
+        let show = defaults.string(forKey: "debugShow").flatMap { title in library.index.shows.first { $0.title == title } }
+        if let show, defaults.bool(forKey: "debugOpenShow") { path.append(ShowRef(id: show.id)) }
+        if let show, defaults.bool(forKey: "debugPlayShow") { player.play(show.episodes) }
         if let album = album("debugPlayAlbum") { player.play(album.tracks) }
         if let id = defaults.string(forKey: "debugOpenWindow") { openWindow(id: id) }
         if defaults.bool(forKey: "debugLogPlayer") {
             Task {
                 while true {
                     try? await Task.sleep(for: .seconds(2))
-                    FileHandle.standardError.write(Data("player: hasMedia=\(player.hasMedia) isVideo=\(player.isVideo) paused=\(player.isPaused) pos=\(Int(player.position))/\(Int(player.duration)) index=\(player.queueIndex ?? -1) format=\(player.formatInfo)\n".utf8))
+                    FileHandle.standardError.write(Data("player: hasMedia=\(player.hasMedia) isVideo=\(player.isVideo) paused=\(player.isPaused) pos=\(Int(player.position))/\(Int(player.duration)) index=\(player.queueIndex ?? -1) format=\(player.formatInfo) vo=\(player.string("vo-configured") ?? "-") out=\(player.string("video-out-params/dw") ?? "-")x\(player.string("video-out-params/dh") ?? "-") layer=\(player.layer.drawableSize) inWindow=\(player.layer.superlayer != nil)\n".utf8))
                 }
             }
         }

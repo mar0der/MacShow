@@ -24,7 +24,8 @@ struct PlaylistTests {
         try database.add([songs[1]], to: playlist)
         #expect(try contents(database)[0].items.map(\.path) == ["/c.mp3", "/a.mp3", "/b.mp3"])
 
-        try database.removeEntries(at: [1], from: playlist)
+        let positions = try contents(database)[0].positions
+        try database.removeEntries(positions: [positions[1]], from: playlist)
         #expect(try contents(database)[0].items.map(\.path) == ["/c.mp3", "/b.mp3"])
     }
 

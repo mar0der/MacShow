@@ -4,16 +4,20 @@ import SwiftUI
 /// Hosts the player's Metal layer, which mpv renders into.
 struct VideoView: NSViewRepresentable {
     let layer: MetalLayer
+    /// Called when the layer lands in a window, so the player can rebuild its output there.
+    var onAttach: () -> Void = {}
 
-    func makeNSView(context: Context) -> LayerHostView { LayerHostView(metalLayer: layer) }
+    func makeNSView(context: Context) -> LayerHostView { LayerHostView(metalLayer: layer, onAttach: onAttach) }
     func updateNSView(_ view: LayerHostView, context: Context) {}
 }
 
 final class LayerHostView: NSView {
     private let metalLayer: MetalLayer
+    private let onAttach: () -> Void
 
-    init(metalLayer: MetalLayer) {
+    init(metalLayer: MetalLayer, onAttach: @escaping () -> Void) {
         self.metalLayer = metalLayer
+        self.onAttach = onAttach
         super.init(frame: .zero)
         metalLayer.backgroundColor = NSColor.black.cgColor
         layer = metalLayer
@@ -25,6 +29,13 @@ final class LayerHostView: NSView {
     override func layout() {
         super.layout()
         updateDrawableSize()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        updateDrawableSize()
+        onAttach()
     }
 
     override func viewDidChangeBackingProperties() {

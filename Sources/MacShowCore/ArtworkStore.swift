@@ -43,6 +43,29 @@ public struct ArtworkStore: Sendable {
         return key
     }
 
+    public func contains(_ key: String) -> Bool {
+        FileManager.default.fileExists(atPath: url(for: key).path)
+    }
+
+    /// Saves an already-decoded image (a video still) under `key`.
+    @discardableResult
+    public func store(_ image: CGImage, key: String) -> Bool {
+        let destination = url(for: key)
+        let temporary = directory.appendingPathComponent(".\(key)-\(UUID().uuidString).jpg")
+        guard let output = CGImageDestinationCreateWithURL(temporary as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return false }
+        CGImageDestinationAddImage(output, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+        guard CGImageDestinationFinalize(output), rename(temporary.path, destination.path) == 0 else {
+            try? FileManager.default.removeItem(at: temporary)
+            return false
+        }
+        return true
+    }
+
+    /// The key for a video's still: tied to the file's path and modification date.
+    public static func stillKey(for item: MediaItem) -> String {
+        "v" + SHA256.hash(data: Data("\(item.path)|\(item.modified)".utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+    }
+
     /// A cover image file next to the media ("cover.jpg", "folder.png", …).
     static func folderImage(in directory: URL) -> Data? {
         let names = ["cover", "folder", "front", "album", "poster"]

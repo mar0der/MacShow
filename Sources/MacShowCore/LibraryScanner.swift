@@ -28,7 +28,7 @@ public final class LibraryScanner: Sendable {
     @discardableResult
     public func scan(folder: URL) async -> ScanResult {
         let folder = URL(fileURLWithPath: folder.canonicalPath)
-        guard let (files, isComplete) = Self.mediaFiles(in: folder) else { return ScanResult() }
+        guard let (files, unreadable) = Self.mediaFiles(in: folder) else { return ScanResult() }
 
         let stamps = (try? database.fileStamps(under: folder.path)) ?? [:]
         var pending: [MediaFile] = []
@@ -65,8 +65,10 @@ public final class LibraryScanner: Sendable {
             try? database.upsert(batch)
         }
 
-        guard isComplete else { return result }
-        let missing = stamps.keys.filter { !seen.contains($0) }
+        // Anything under a folder or file we couldn't read is unknown, not gone.
+        let missing = stamps.keys.filter { path in
+            !seen.contains(path) && !unreadable.contains { path == $0 || path.hasPrefix($0 + "/") }
+        }
         try? database.deleteItems(paths: missing)
         result.removed = missing.count
         return result
@@ -74,17 +76,18 @@ public final class LibraryScanner: Sendable {
 
     private typealias MediaFile = (url: URL, size: Int64, modified: Double)
 
-    /// Every media file under `folder`, and whether the listing finished without
-    /// errors; nil if `folder` isn't a reachable folder.
-    private static func mediaFiles(in folder: URL) -> ([MediaFile], isComplete: Bool)? {
+    /// Every media file under `folder`, plus the paths that couldn't be read
+    /// (folders the listing failed on, files whose details failed); nil if
+    /// `folder` isn't a reachable folder.
+    private static func mediaFiles(in folder: URL) -> ([MediaFile], unreadable: [String])? {
         let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
         var isDirectory: ObjCBool = false
-        var isComplete = true
+        var unreadable: [String] = []
         guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue,
               let enumerator = FileManager.default.enumerator(
                   at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants],
-                  errorHandler: { _, _ in
-                      isComplete = false
+                  errorHandler: { url, _ in
+                      unreadable.append(url.path)
                       return true
                   }
               )
@@ -92,10 +95,14 @@ public final class LibraryScanner: Sendable {
 
         var files: [MediaFile] = []
         for case let url as URL in enumerator where Classifier.isMediaFile(url) {
-            guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true else { continue }
+            guard let values = try? url.resourceValues(forKeys: Set(keys)) else {
+                unreadable.append(url.path)
+                continue
+            }
+            guard values.isRegularFile == true else { continue }
             files.append((url, Int64(values.fileSize ?? 0), values.contentModificationDate?.timeIntervalSince1970 ?? 0))
         }
-        return (files, isComplete)
+        return (files, unreadable)
     }
 
     private func readItem(_ url: URL, size: Int64, modified: Double) -> MediaItem? {

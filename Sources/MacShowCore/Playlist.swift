@@ -31,6 +31,8 @@ struct PlaylistEntry: Codable, FetchableRecord, PersistableRecord {
 public struct PlaylistContents: Identifiable, Hashable, Sendable {
     public var playlist: Playlist
     public var items: [MediaItem]
+    /// Each item's stored position, for removing exactly that entry.
+    public var positions: [Int]
     public var id: Int64? { playlist.id }
 }
 
@@ -55,25 +57,26 @@ extension LibraryDatabase {
         _ = try writer.write { db in try playlist.delete(db) }
     }
 
-    /// Appends `items` to the end of the playlist.
+    /// Appends `items` to the end of the playlist, skipping any whose file has
+    /// since left the library.
     public func add(_ items: [MediaItem], to playlist: Playlist) throws {
         guard let playlistId = playlist.id else { return }
         try writer.write { db in
             var position = try Int.fetchOne(db, sql: "SELECT MAX(position) FROM playlistEntry WHERE playlistId = ?", arguments: [playlistId]) ?? -1
-            for itemId in items.compactMap(\.id) {
+            for itemId in items.compactMap(\.id) where try MediaItem.exists(db, key: itemId) {
                 position += 1
                 try PlaylistEntry(playlistId: playlistId, mediaItemId: itemId, position: position).insert(db)
             }
         }
     }
 
-    /// Removes the songs at `offsets` (positions in the playlist's current order).
-    public func removeEntries(at offsets: IndexSet, from playlist: Playlist) throws {
+    /// Removes entries by their stored position (`PlaylistContents.positions`),
+    /// which stays right even if the list on screen is a moment old.
+    public func removeEntries(positions: [Int], from playlist: Playlist) throws {
         guard let playlistId = playlist.id else { return }
         try writer.write { db in
-            let positions = try Int.fetchAll(db, sql: "SELECT position FROM playlistEntry WHERE playlistId = ? ORDER BY position", arguments: [playlistId])
-            for offset in offsets where positions.indices.contains(offset) {
-                try db.execute(sql: "DELETE FROM playlistEntry WHERE playlistId = ? AND position = ?", arguments: [playlistId, positions[offset]])
+            for position in positions {
+                try db.execute(sql: "DELETE FROM playlistEntry WHERE playlistId = ? AND position = ?", arguments: [playlistId, position])
             }
         }
     }
@@ -84,7 +87,8 @@ extension LibraryDatabase {
         let entries = try PlaylistEntry.order(Column("position")).fetchAll(db)
         let byPlaylist = Dictionary(grouping: entries, by: \.playlistId)
         return playlists.map { playlist in
-            PlaylistContents(playlist: playlist, items: (byPlaylist[playlist.id ?? -1] ?? []).compactMap { items[$0.mediaItemId] })
+            let entries = (byPlaylist[playlist.id ?? -1] ?? []).compactMap { entry in items[entry.mediaItemId].map { (entry.position, $0) } }
+            return PlaylistContents(playlist: playlist, items: entries.map(\.1), positions: entries.map(\.0))
         }
     }
 
@@ -101,6 +105,10 @@ extension LibraryDatabase {
                 t.column("position", .integer).notNull()
                 t.primaryKey(["playlistId", "position"])
             }
+        }
+        // Without it, every song deletion scans the whole table for the cascade.
+        migrator.registerMigration("v4-playlist-entry-index") { db in
+            try db.create(index: "playlistEntry_mediaItemId", on: "playlistEntry", columns: ["mediaItemId"])
         }
     }
 }

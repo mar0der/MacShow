@@ -32,6 +32,17 @@ final class Player {
     }
     /// Control Center / media keys; set by the app once the library exists.
     @ObservationIgnored var nowPlaying: NowPlaying?
+    /// Where resume points are read from and saved to; set by the app.
+    @ObservationIgnored weak var library: Library?
+    @ObservationIgnored private var lastSavedSecond = -1
+    /// Bumped when mpv's track list or track selection changes, so menus refresh.
+    private(set) var tracksVersion = 0
+
+    struct Track: Identifiable, Hashable {
+        let id: Int
+        let title: String
+        let isSelected: Bool
+    }
     var repeatMode: Repeat = .off {
         didSet {
             setString("loop-playlist", repeatMode == .all ? "inf" : "no")
@@ -71,6 +82,7 @@ final class Player {
             ("time-pos", MPV_FORMAT_DOUBLE), ("duration", MPV_FORMAT_DOUBLE),
             ("pause", MPV_FORMAT_FLAG), ("media-title", MPV_FORMAT_STRING),
             ("chapter-metadata/title", MPV_FORMAT_STRING), ("playlist-pos", MPV_FORMAT_INT64),
+            ("track-list/count", MPV_FORMAT_INT64), ("sid", MPV_FORMAT_STRING), ("aid", MPV_FORMAT_STRING),
         ] {
             mpv_observe_property(mpv, 0, name, format)
         }
@@ -78,21 +90,76 @@ final class Player {
             let player = Unmanaged<Player>.fromOpaque(context!).takeUnretainedValue()
             player.eventQueue.async { player.drainEvents() }
         }, Unmanaged.passUnretained(self).toOpaque())
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.savePosition() }
+        }
     }
 
     // MARK: Playback
 
     /// Replaces the queue with `items` and starts playing `items[index]`.
-    func play(_ items: [MediaItem], startAt index: Int = 0) {
+    /// Movies, episodes and audiobooks pick up where they were left.
+    func play(_ items: [MediaItem], startAt index: Int = 0, fromBeginning: Bool = false) {
         guard items.indices.contains(index) else { return }
+        savePosition()
         command("stop")
         queue = items
         queueIndex = index
         isShuffled = false
-        for item in items { command("loadfile", item.path, "append") }
+        for (offset, item) in items.enumerated() {
+            if let start = fromBeginning && offset == index ? nil : resumePoint(for: item) {
+                command("loadfile", item.path, "append", "-1", "start=\(Int(start))")
+            } else {
+                command("loadfile", item.path, "append")
+            }
+        }
         command("playlist-play-index", String(index))
         setFlag("pause", false)
     }
+
+    private func resumePoint(for item: MediaItem) -> Double? {
+        guard item.kind != .music, let id = item.id, let saved = library?.positions[id], saved.isResumable else { return nil }
+        return saved.position
+    }
+
+    /// Records where the current movie, episode or audiobook is (music isn't resumed).
+    func savePosition() {
+        guard let item = currentItem, item.kind != .music, duration > 0 else { return }
+        library?.savePosition(position, duration: duration, for: item)
+    }
+
+    /// mpv sets up its video output when a file loads; if the video window
+    /// appears afterwards, that output never reaches the screen. Re-selecting
+    /// the video track makes mpv build it again on the now-visible layer.
+    func reattachVideoOutput() {
+        guard let track = string("vid"), track != "no" else { return }
+        setString("vid", "no")
+        setString("vid", track)
+    }
+
+    // MARK: Tracks
+
+    /// Subtitle ("sub") or audio ("audio") tracks of the current file.
+    func tracks(_ type: String) -> [Track] {
+        _ = tracksVersion
+        let count = Int(string("track-list/count") ?? "") ?? 0
+        return (0..<count).compactMap { index in
+            let base = "track-list/\(index)/"
+            guard string(base + "type") == type, let id = Int(string(base + "id") ?? "") else { return nil }
+            let language = string(base + "lang").map { Locale.current.localizedString(forLanguageCode: $0) ?? $0 }
+            let parts = [string(base + "title"), language, string(base + "codec")?.uppercased(),
+                         string(base + "external") == "yes" ? "External" : nil]
+            let title = parts.compactMap { $0 }.joined(separator: " · ")
+            return Track(id: id, title: title.isEmpty ? "Track \(id)" : title, isSelected: string(base + "selected") == "yes")
+        }
+    }
+
+    /// Selects a track, or turns subtitles off with nil.
+    func select(_ track: Track?, type: String) {
+        setString(type == "sub" ? "sid" : "aid", track.map { String($0.id) } ?? "no")
+    }
+
+    func addSubtitleFile(_ url: URL) { command("sub-add", url.path, "select") }
 
     /// Plays a file that isn't in the library (File › Open, or a launch argument).
     func open(_ url: URL) {
@@ -136,6 +203,7 @@ final class Player {
     }
 
     func stop() {
+        savePosition()
         command("stop")
         queue = []
         queueIndex = nil
@@ -230,16 +298,27 @@ final class Player {
 
     private func apply(_ name: String, _ value: Any?) {
         switch name {
-        case "time-pos": position = value as? Double ?? 0
+        case "time-pos":
+            position = value as? Double ?? 0
+            // Every 5 seconds of playback.
+            let second = Int(position) / 5
+            if second != lastSavedSecond {
+                lastSavedSecond = second
+                savePosition()
+            }
+            return
         case "duration": duration = value as? Double ?? 0
-        case "pause": isPaused = value as? Bool ?? true
+        case "pause":
+            isPaused = value as? Bool ?? true
+            if isPaused { savePosition() }
+        case "track-list/count", "sid", "aid": tracksVersion += 1
         case "media-title": title = value as? String ?? ""
         case "chapter-metadata/title": chapterTitle = value as? String
         case "playlist-pos":
             if let index = value as? Int, index >= 0, !queue.isEmpty { queueIndex = index }
         default: break
         }
-        if name != "time-pos" { nowPlaying?.update() }
+        nowPlaying?.update()
     }
 
     /// e.g. "HEVC · AC3 · 48 kHz" or "FLAC · 96 kHz", and whether there's a real

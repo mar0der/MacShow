@@ -28,7 +28,7 @@ struct AlbumTile: View {
     let album: Album
 
     var body: some View {
-        NavigationLink(value: album) {
+        NavigationLink(value: AlbumRef(id: album.id)) {
             VStack(alignment: .leading, spacing: 8) {
                 ArtworkView(key: album.artworkKey, title: album.title)
                     .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
@@ -125,8 +125,10 @@ struct TrackList: View {
                     track: track, number: numbered ? track.trackNumber : offset + 1, showsArtist: showsArtist,
                     isCurrent: player.currentItem?.id == track.id
                 ) {
+                    // Count by row, so the second copy of a song plays from the second copy.
                     let playable = tracks.filter { !$0.isProtected }
-                    if let start = playable.firstIndex(of: track) { player.play(playable, startAt: start) }
+                    let start = tracks[..<offset].filter { !$0.isProtected }.count
+                    if !track.isProtected { player.play(playable, startAt: start) }
                 }
                 .contextMenu {
                     MediaMenu(items: [track])
@@ -192,7 +194,7 @@ struct ArtistsView: View {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: 24)], spacing: 24) {
                         ForEach(artists) { artist in
-                            NavigationLink(value: artist) {
+                            NavigationLink(value: ArtistRef(id: artist.id)) {
                                 VStack(spacing: 8) {
                                     ArtworkView(key: artist.artworkKey, title: artist.name, cornerRadius: 100)
                                         .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
@@ -249,14 +251,22 @@ extension MediaItem {
 struct SongsView: View {
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
-    @State private var sortOrder = [KeyPathComparator(\MediaItem.title, comparator: .localizedStandard)]
+    @State private var sortOrder = [Self.titleOrder]
     @State private var selection = Set<MediaItem.ID>()
+    @State private var sorted: [MediaItem]?
 
+    private static let titleOrder = KeyPathComparator(\MediaItem.title, comparator: .localizedStandard)
     /// mpv's playlist is loaded item by item, so a click in a huge list queues a window around it.
     private static let queueLimit = 500
 
+    /// The index already sorts songs by title; other orders are sorted in the background.
+    private struct SortKey: Equatable {
+        let generation: Int
+        let order: [KeyPathComparator<MediaItem>]
+    }
+
     var body: some View {
-        let songs = library.index.songs.sorted(using: sortOrder)
+        let songs = sortOrder == [Self.titleOrder] ? library.index.songs : (sorted ?? library.index.songs)
         Group {
             if songs.isEmpty {
                 EmptyLibraryView(title: "No Songs", icon: "music.note")
@@ -285,6 +295,11 @@ struct SongsView: View {
             }
         }
         .navigationTitle("Songs")
+        .task(id: SortKey(generation: library.generation, order: sortOrder)) {
+            guard sortOrder != [Self.titleOrder] else { return }
+            let songs = library.index.songs, order = sortOrder
+            sorted = await Task.detached(priority: .userInitiated) { songs.sorted(using: order) }.value
+        }
     }
 }
 
@@ -317,7 +332,7 @@ struct PlaylistView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     TrackList(tracks: contents.items, showsArtist: true, numbered: false) { offset in
-                        AnyView(Button("Remove from Playlist") { library.removeEntries(at: [offset], from: contents.playlist) })
+                        AnyView(Button("Remove from Playlist") { library.removeEntries(positions: [contents.positions[offset]], from: contents.playlist) })
                     }
                 }
             }

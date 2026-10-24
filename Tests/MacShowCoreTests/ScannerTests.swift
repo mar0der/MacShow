@@ -101,17 +101,21 @@ struct ScannerTests {
         #expect(try library.item(named: "song.flac").id == firstID)
     }
 
-    @Test func listingErrorRemovesNothing() async throws {
+    @Test func unreadableFolderKeepsOnlyItsOwnItems() async throws {
         let library = try TempLibrary()
-        await library.scanner.scan(folder: library.folder)
-        try FileManager.default.removeItem(at: library.folder.appendingPathComponent("book.m4b"))
         let locked = library.folder.appendingPathComponent("locked")
         try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: library.folder.appendingPathComponent("song.flac"), to: locked.appendingPathComponent("song.flac"))
+        await library.scanner.scan(folder: library.folder)
+        #expect(try library.database.allItems().count == 3)
+
+        // The locked folder becomes unreadable and a file outside it is deleted.
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+        try FileManager.default.removeItem(at: library.folder.appendingPathComponent("book.m4b"))
 
-        #expect(await library.scanner.scan(folder: library.folder).removed == 0)
-        #expect(try library.database.allItems().count == 3)
+        #expect(await library.scanner.scan(folder: library.folder).removed == 1)
+        #expect(try library.database.allItems().map(\.url.lastPathComponent).sorted() == ["My.Show.S02E05.720p.mkv", "song.flac"])
     }
 
     @Test func missingFolderKeepsItsItems() async throws {

@@ -8,12 +8,38 @@ struct HomeView: View {
         let index = library.index
         if index.isEmpty {
             EmptyLibraryView(title: library.isScanning ? "Reading Your Library…" : "Nothing Here Yet", icon: "play.square.stack")
+                .navigationTitle("Home")
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 32) {
+                    let resume = library.continueWatching
+                    if !resume.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Jump back in").font(.title3.weight(.semibold)).padding(.horizontal, 28)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 420), spacing: 16)], spacing: 16) {
+                                ForEach(resume.prefix(6)) { JumpBackInCard(item: $0) }
+                            }
+                            .padding(.horizontal, 28)
+                        }
+                    }
                     if !index.albums.isEmpty {
                         Shelf(title: "Albums") {
                             ForEach(index.albums.prefix(12)) { AlbumTile(album: $0).frame(width: 170) }
+                        }
+                    }
+                    if !index.shows.isEmpty {
+                        Shelf(title: "TV Shows") {
+                            ForEach(index.shows.prefix(12)) { show in
+                                NavigationLink(value: ShowRef(id: show.id)) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        VideoStill(item: show.episodes[0])
+                                        Text(show.title).font(.callout.weight(.semibold)).lineLimit(1)
+                                    }
+                                    .frame(width: 240)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                     if !index.movies.isEmpty {
@@ -30,6 +56,57 @@ struct HomeView: View {
                 .padding(.vertical, 24)
             }
             .navigationTitle("Home")
+        }
+    }
+}
+
+/// A "Jump back in" card: still, kind, title, time left and progress.
+struct JumpBackInCard: View {
+    let item: MediaItem
+    @Environment(Library.self) private var library
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        let saved = item.id.flatMap { library.positions[$0] }
+        Button { play() } label: {
+            HStack(spacing: 14) {
+                VideoStill(item: item, cornerRadius: 6).frame(width: 128)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(kind).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                    Text(item.kind == .episode ? (item.show ?? item.title) : item.title).font(.callout.weight(.semibold)).lineLimit(1)
+                    Text(detail(saved)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if let saved, saved.isResumable { ProgressBar(progress: saved.progress).padding(.top, 2) }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.08)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var kind: String {
+        switch item.kind {
+        case .episode: "Episode"
+        case .audiobook: "Audiobook"
+        default: "Movie"
+        }
+    }
+
+    private func detail(_ saved: PlaybackPosition?) -> String {
+        let episode = item.kind == .episode ? "S\(item.season ?? 1) E\(item.episode ?? 0) · " : ""
+        if let saved, saved.isResumable { return episode + "\(Format.duration(saved.remaining)) left" }
+        return episode + (item.kind == .episode ? "Up next" : Format.duration(item.duration))
+    }
+
+    /// Episodes play on through the rest of their show.
+    private func play() {
+        if item.kind == .episode, let show = library.index.shows.first(where: { $0.episodes.contains(item) }) {
+            player.play(show.episodes, startAt: show.episodes.firstIndex(of: item) ?? 0)
+        } else {
+            player.play([item])
         }
     }
 }
