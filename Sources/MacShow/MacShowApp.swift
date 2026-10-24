@@ -1,21 +1,36 @@
 import AppKit
+import MacShowCore
 import SwiftUI
 
 @main
 struct MacShowApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
+    @State private var library: Library
     @State private var player = Player()
+
+    init() {
+        do {
+            _library = State(initialValue: try Library())
+        } catch {
+            fatalError("Couldn't open the library database: \(error)")
+        }
+    }
 
     var body: some Scene {
         Window("MacShow", id: "main") {
-            ContentView(player: player)
+            RootView()
+                .environment(library)
+                .environment(player)
+                .preferredColorScheme(.dark)
                 .onAppear {
-                    // `MacShow <file>` opens that file on launch.
-                    if let path = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") }) {
+                    library.start()
+                    // `MacShow <file>` plays that file on launch.
+                    if let path = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") && FileManager.default.fileExists(atPath: $0) }) {
                         player.open(URL(fileURLWithPath: path))
                     }
                 }
         }
+        .defaultSize(width: 1280, height: 800)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") {
@@ -26,6 +41,31 @@ struct MacShowApp: App {
                 }
                 .keyboardShortcut("o")
             }
+            CommandMenu("Controls") {
+                Button(player.isPaused ? "Play" : "Pause") { player.togglePause() }
+                    .keyboardShortcut(.space, modifiers: [])
+                    .disabled(!player.hasMedia)
+                Button("Next") { player.next() }.keyboardShortcut(.rightArrow)
+                Button("Previous") { player.previous() }.keyboardShortcut(.leftArrow)
+                Divider()
+                Button("Skip Forward 10 Seconds") { player.skip(10) }.keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
+                Button("Skip Back 10 Seconds") { player.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+            }
+        }
+
+        Window("Video", id: "video") {
+            VideoPlayerView()
+                .environment(library)
+                .environment(player)
+                .preferredColorScheme(.dark)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1280, height: 720)
+
+        Settings {
+            SettingsView()
+                .environment(library)
+                .preferredColorScheme(.dark)
         }
     }
 }
