@@ -6,14 +6,19 @@ import SwiftUI
 struct MacShowApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var library: Library
-    @State private var player = Player()
+    @State private var player: Player
 
     init() {
+        let library: Library
         do {
-            _library = State(initialValue: try Library())
+            library = try Library()
         } catch {
             fatalError("Couldn't open the library database: \(error)")
         }
+        let player = Player()
+        player.nowPlaying = NowPlaying(player: player, artwork: library.artwork)
+        _library = State(initialValue: library)
+        _player = State(initialValue: player)
     }
 
     var body: some Scene {
@@ -51,7 +56,22 @@ struct MacShowApp: App {
                 Button("Skip Forward 10 Seconds") { player.skip(10) }.keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
                 Button("Skip Back 10 Seconds") { player.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
             }
+            CommandGroup(before: .windowList) {
+                OpenWindowButton(title: "Mini Player", id: "mini").keyboardShortcut("m", modifiers: [.command, .shift])
+                OpenWindowButton(title: "Library", id: "main").keyboardShortcut("1")
+                Divider()
+            }
         }
+
+        Window("Mini Player", id: "mini") {
+            MiniPlayerView()
+                .environment(library)
+                .environment(player)
+                .preferredColorScheme(.dark)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .noRestoration()
 
         Window("Video", id: "video") {
             VideoPlayerView()
@@ -61,12 +81,35 @@ struct MacShowApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 720)
+        .noRestoration()
 
         Settings {
             SettingsView()
                 .environment(library)
                 .preferredColorScheme(.dark)
         }
+    }
+}
+
+extension Scene {
+    /// Windows that only make sense while something plays shouldn't come back at launch.
+    func noRestoration() -> some Scene {
+        if #available(macOS 15, *) {
+            return restorationBehavior(.disabled)
+        } else {
+            return self
+        }
+    }
+}
+
+/// Menu items can't read `openWindow` from the environment directly.
+private struct OpenWindowButton: View {
+    let title: String
+    let id: String
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(title) { openWindow(id: id) }
     }
 }
 

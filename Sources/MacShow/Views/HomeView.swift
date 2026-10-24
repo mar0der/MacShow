@@ -6,7 +6,7 @@ struct HomeView: View {
 
     var body: some View {
         let index = library.index
-        if library.items.isEmpty {
+        if index.isEmpty {
             EmptyLibraryView(title: library.isScanning ? "Reading Your Library…" : "Nothing Here Yet", icon: "play.square.stack")
         } else {
             ScrollView {

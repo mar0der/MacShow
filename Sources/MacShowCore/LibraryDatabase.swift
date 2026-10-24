@@ -73,6 +73,7 @@ public final class LibraryDatabase: Sendable {
                 t.column("bookmark", .blob)
             }
         }
+        registerPlaylistMigration(&migrator)
         return migrator
     }
 
@@ -84,12 +85,9 @@ public final class LibraryDatabase: Sendable {
 
     /// Path → (size, modified) for every item under `folder`, used to skip unchanged files.
     func fileStamps(under folder: String) throws -> [String: (size: Int64, modified: Double)] {
-        try writer.read { db in
-            let rows = try Row.fetchAll(
-                db,
-                sql: "SELECT path, fileSize, modified FROM mediaItem WHERE path LIKE ? ESCAPE '\\'",
-                arguments: [Self.likePrefix(folder)]
-            )
+        let inside = Self.inside(folder)
+        return try writer.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT path, fileSize, modified FROM mediaItem WHERE \(inside.sql)", arguments: inside.arguments)
             return Dictionary(uniqueKeysWithValues: rows.map { ($0["path"], (size: $0["fileSize"], modified: $0["modified"])) })
         }
     }
@@ -135,22 +133,25 @@ public final class LibraryDatabase: Sendable {
         }
     }
 
-    /// Removes the folder and every item indexed under it.
-    public func removeWatchedFolder(path: String) throws {
-        let itemPrefix = Self.likePrefix(URL(fileURLWithPath: path).canonicalPath)
+    public func updateBookmark(_ bookmark: Data, forFolder path: String) throws {
         try writer.write { db in
-            _ = try WatchedFolder.filter(Column("path") == path).deleteAll(db)
-            try db.execute(sql: "DELETE FROM mediaItem WHERE path LIKE ? ESCAPE '\\'", arguments: [itemPrefix])
+            try db.execute(sql: "UPDATE watchedFolder SET bookmark = ? WHERE path = ?", arguments: [bookmark, path])
         }
     }
 
-    /// A LIKE pattern matching paths inside `folder` (with `%`, `_` and `\` escaped).
-    static func likePrefix(_ folder: String) -> String {
+    /// Removes the folder and every item indexed under it.
+    public func removeWatchedFolder(path: String) throws {
+        let inside = Self.inside(URL(fileURLWithPath: path).canonicalPath)
+        try writer.write { db in
+            _ = try WatchedFolder.filter(Column("path") == path).deleteAll(db)
+            try db.execute(sql: "DELETE FROM mediaItem WHERE \(inside.sql)", arguments: inside.arguments)
+        }
+    }
+
+    /// A condition matching item paths inside `folder`. Compares the prefix exactly:
+    /// LIKE ignores ASCII case, which mixes up "Rock/" and "rock/" on case-sensitive drives.
+    static func inside(_ folder: String) -> (sql: String, arguments: StatementArguments) {
         let directory = folder.hasSuffix("/") ? folder : folder + "/"
-        let escaped = directory
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-        return escaped + "%"
+        return ("substr(path, 1, ?) = ?", [directory.unicodeScalars.count, directory])
     }
 }

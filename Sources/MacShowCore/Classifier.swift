@@ -5,7 +5,7 @@ import Foundation
 /// back to the file and folder names.
 public enum Classifier {
     /// Bump when the rules below change, so existing libraries are re-read once.
-    public static let version = 2
+    public static let version = 4
 
     public static let audioExtensions: Set<String> = [
         "mp3", "m4a", "m4b", "m4p", "aac", "flac", "alac", "wav", "aif", "aiff", "ogg", "oga",
@@ -30,9 +30,9 @@ public enum Classifier {
         let folders = Array(url.deletingLastPathComponent().pathComponents.reversed())
         var item = MediaItem(
             path: url.path, kind: .music, title: "",
-            artist: tags["artist"] ?? tags["author"],
+            artist: (tags["artist"] ?? tags["author"]).map(stripTrackPrefix),
             album: tags["album"],
-            albumArtist: tags["album_artist"] ?? tags["albumartist"] ?? tags["album artist"],
+            albumArtist: (tags["album_artist"] ?? tags["albumartist"] ?? tags["album artist"]).map(stripTrackPrefix),
             genre: tags["genre"],
             year: year(tags["date"] ?? tags["year"] ?? tags["originaldate"]),
             trackNumber: leadingNumber(tags["track"] ?? tags["tracknumber"]),
@@ -60,7 +60,7 @@ public enum Classifier {
                 item.kind = .movie
                 // A bare number ("14.mp4") says nothing on its own; prefix the folder name.
                 let numbered = parsed.title.allSatisfy(\.isNumber) ? folders.first.map { "\(cleanName($0)) \(parsed.title)" } : nil
-                item.title = tags["title"] ?? numbered ?? parsed.title
+                item.title = tags["title"].flatMap { looksLikeFileName($0) ? nil : $0 } ?? numbered ?? parsed.title
                 item.year = item.year ?? parsed.year
             }
         } else {
@@ -122,6 +122,13 @@ public enum Classifier {
         return (title.isEmpty ? cleanName(fileName) : title, year)
     }
 
+    /// Release groups often write the file name into the title tag
+    /// ("Some.Movie.2006.BDRip…"): dots or underscores between words, or release junk.
+    static func looksLikeFileName(_ title: String) -> Bool {
+        title.range(of: #"\w[._]\w+[._]\w"#, options: .regularExpression) != nil
+            || releaseJunk.firstMatch(in: title, range: NSRange(title.startIndex..., in: title)) != nil
+    }
+
     /// Dots and underscores to spaces, collapsed and trimmed (keeps "Mr. Robot"-style dots before a space).
     static func cleanName(_ name: String) -> String {
         let spaced = name.replacingOccurrences(of: #"[._](?! )"#, with: " ", options: .regularExpression)
@@ -132,6 +139,13 @@ public enum Classifier {
     /// "01 - Intro" / "01. Intro" / "1 Intro" → "Intro".
     static func stripTrackNumber(_ name: String) -> String {
         let stripped = name.replacingOccurrences(of: #"^\d{1,3}\s*[-.]?\s+"#, with: "", options: .regularExpression)
+        return stripped.isEmpty ? name : stripped
+    }
+
+    /// "043. Modern Talking" → "Modern Talking" (some CUE splitters write the track
+    /// number into the artist tag). Needs the dot, so "50 Cent" stays.
+    static func stripTrackPrefix(_ name: String) -> String {
+        let stripped = name.replacingOccurrences(of: #"^\d{1,3}\.\s+"#, with: "", options: .regularExpression)
         return stripped.isEmpty ? name : stripped
     }
 

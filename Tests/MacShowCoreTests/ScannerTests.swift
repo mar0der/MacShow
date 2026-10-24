@@ -101,6 +101,19 @@ struct ScannerTests {
         #expect(try library.item(named: "song.flac").id == firstID)
     }
 
+    @Test func listingErrorRemovesNothing() async throws {
+        let library = try TempLibrary()
+        await library.scanner.scan(folder: library.folder)
+        try FileManager.default.removeItem(at: library.folder.appendingPathComponent("book.m4b"))
+        let locked = library.folder.appendingPathComponent("locked")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+
+        #expect(await library.scanner.scan(folder: library.folder).removed == 0)
+        #expect(try library.database.allItems().count == 3)
+    }
+
     @Test func missingFolderKeepsItsItems() async throws {
         let library = try TempLibrary()
         await library.scanner.scan(folder: library.folder)
@@ -109,8 +122,10 @@ struct ScannerTests {
     }
 
     @Test func folderPrefixDoesNotMatchSiblingFolders() {
-        #expect(LibraryDatabase.likePrefix("/Music") == "/Music/%")
-        #expect(LibraryDatabase.likePrefix("/My_Music%") == "/My\\_Music\\%/%")
+        let database = try! LibraryDatabase.inMemory()
+        try! database.upsert([makeItem("/Music/a.mp3"), makeItem("/Music Videos/b.mp4"), makeItem("/music/c.mp3"), makeItem("/My_Music/d.mp3")])
+        #expect(Set(try! database.fileStamps(under: "/Music").keys) == ["/Music/a.mp3"])
+        #expect(Set(try! database.fileStamps(under: "/My_Music").keys) == ["/My_Music/d.mp3"])
     }
 }
 

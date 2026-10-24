@@ -30,14 +30,23 @@ struct ArtworkView: View {
             }
     }
 
+    /// Artist photos are drawn as circles (a corner radius of 50 or more).
+    private var isCircle: Bool { cornerRadius >= 50 }
+
+    /// "Lamb of God" → "LG", "Eminem" → "E".
+    private var initials: String {
+        let words = title.split(separator: " ").filter { $0.first?.isLetter ?? false && $0.first!.isUppercase }
+        return String((words.isEmpty ? [Substring(title)] : words).prefix(2).compactMap(\.first))
+    }
+
     private var placeholder: some View {
         // A stable hash (String.hashValue changes every launch).
         let hue = Double(title.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) % 360 }) / 360
         return Rectangle()
             .fill(Color(hue: hue, saturation: 0.45, brightness: 0.32))
-            .overlay(alignment: .bottomLeading) {
-                Text(title)
-                    .font(.system(size: 18, weight: .heavy))
+            .overlay(alignment: isCircle ? .center : .bottomLeading) {
+                Text(isCircle ? initials : title)
+                    .font(.system(size: isCircle ? 34 : 18, weight: .heavy))
                     .foregroundStyle(Color(hue: hue, saturation: 0.25, brightness: 0.92))
                     .lineLimit(3)
                     .minimumScaleFactor(0.5)

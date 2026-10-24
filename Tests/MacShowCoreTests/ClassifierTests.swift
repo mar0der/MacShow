@@ -47,12 +47,30 @@ struct ClassifierTests {
         #expect(item.title == "Bg clips 14")
     }
 
+    @Test func fileNameInTitleTagIsCleanedUp() {
+        let item = Classifier.makeItem(
+            url: URL(fileURLWithPath: "/Movies/Asterix.and.the.Vikings.2006.BDRip.mkv"),
+            metadata: FileMetadata(tags: ["title": "Asterix.and.the.Vikings.2006.BDRip.BG.Audio"], duration: 4700, hasVideo: true),
+            fileSize: 1, modified: 0, artworkKey: nil
+        )
+        #expect(item.title == "Asterix and the Vikings")
+        #expect(item.year == 2006)
+        #expect(!Classifier.looksLikeFileName("Mr. Robot"))
+        #expect(!Classifier.looksLikeFileName("Big Buck Bunny"))
+    }
+
     @Test func readsNumbersAndYears() {
         #expect(Classifier.leadingNumber("3/10") == 3)
         #expect(Classifier.leadingNumber("07") == 7)
         #expect(Classifier.leadingNumber("") == nil)
         #expect(Classifier.year("2024-05-01") == 2024)
         #expect(Classifier.year("n/a") == nil)
+    }
+
+    @Test func stripsTrackNumberFromArtistTags() {
+        #expect(Classifier.stripTrackPrefix("043. Modern Talking") == "Modern Talking")
+        #expect(Classifier.stripTrackPrefix("50 Cent") == "50 Cent")
+        #expect(Classifier.stripTrackPrefix("311") == "311")
     }
 
     @Test func stripsTrackNumbersFromFileNames() {

@@ -23,6 +23,15 @@ final class Player {
     private(set) var chapterTitle: String?
     private(set) var isShuffled = false
     var volume: Double = 100 { didSet { setDouble("volume", volume) } }
+    /// Playback speed (audiobooks); pitch is kept.
+    var speed: Double = 1 {
+        didSet {
+            setDouble("speed", speed)
+            nowPlaying?.update()
+        }
+    }
+    /// Control Center / media keys; set by the app once the library exists.
+    @ObservationIgnored var nowPlaying: NowPlaying?
     var repeatMode: Repeat = .off {
         didSet {
             setString("loop-playlist", repeatMode == .all ? "inf" : "no")
@@ -105,6 +114,27 @@ final class Player {
 
     func playQueueItem(at index: Int) { command("playlist-play-index", String(index)) }
 
+    /// Inserts `items` right after the current one (or plays them if nothing is queued).
+    func playNext(_ items: [MediaItem]) {
+        guard let index = queueIndex, !queue.isEmpty else { return play(items) }
+        for item in items.reversed() { command("loadfile", item.path, "insert-next") }
+        queue.insert(contentsOf: items, at: index + 1)
+    }
+
+    /// Appends `items` to the end of the queue (or plays them if nothing is queued).
+    func addToQueue(_ items: [MediaItem]) {
+        guard !queue.isEmpty else { return play(items) }
+        for item in items { command("loadfile", item.path, "append") }
+        queue.append(contentsOf: items)
+    }
+
+    func removeFromQueue(at index: Int) {
+        guard queue.indices.contains(index), index != queueIndex else { return }
+        command("playlist-remove", String(index))
+        queue.remove(at: index)
+        if let current = queueIndex, index < current { queueIndex = current - 1 }
+    }
+
     func stop() {
         command("stop")
         queue = []
@@ -176,6 +206,8 @@ final class Player {
                         self.isVideo = hasVideo
                     }
                 }
+            case MPV_EVENT_PLAYBACK_RESTART:  // after a seek or a new file starts
+                DispatchQueue.main.async { MainActor.assumeIsolated { self.nowPlaying?.update() } }
             case MPV_EVENT_LOG_MESSAGE:
                 let message = event.data.assumingMemoryBound(to: mpv_event_log_message.self).pointee
                 FileHandle.standardError.write(Data("[mpv \(String(cString: message.prefix))] \(String(cString: message.text))".utf8))
@@ -207,6 +239,7 @@ final class Player {
             if let index = value as? Int, index >= 0, !queue.isEmpty { queueIndex = index }
         default: break
         }
+        if name != "time-pos" { nowPlaying?.update() }
     }
 
     /// e.g. "HEVC · AC3 · 48 kHz" or "FLAC · 96 kHz", and whether there's a real

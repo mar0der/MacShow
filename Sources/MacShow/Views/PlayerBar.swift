@@ -1,16 +1,40 @@
 import MacShowCore
 import SwiftUI
 
+extension View {
+    /// Adds the floating player bar under a library page while audio is playing.
+    /// (Applied per page: on a NavigationStack itself the inset isn't drawn.)
+    func withPlayerBar() -> some View { modifier(PlayerBarInset()) }
+}
+
+private struct PlayerBarInset: ViewModifier {
+    @Environment(Player.self) private var player
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom) {
+            if player.hasMedia, !player.isVideo {
+                PlayerBar().padding(.horizontal, 20).padding(.bottom, 14)
+            }
+        }
+    }
+}
+
 /// The floating now-playing bar at the bottom of the library window.
 struct PlayerBar: View {
     @Environment(Player.self) private var player
+    @Environment(\.openWindow) private var openWindow
+    @State private var showsQueue = false
 
     var body: some View {
         @Bindable var player = player
         HStack(spacing: 16) {
             HStack(spacing: 12) {
-                ArtworkView(key: player.currentItem?.artworkKey, title: player.currentItem?.album ?? player.title, cornerRadius: 6)
-                    .frame(width: 46, height: 46)
+                Button { openWindow(id: "mini") } label: {
+                    ArtworkView(key: player.currentItem?.artworkKey, title: player.currentItem?.album ?? player.title, cornerRadius: 6)
+                        .frame(width: 46, height: 46)
+                }
+                .buttonStyle(.plain)
+                .help("Open Mini Player")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(player.currentItem?.title ?? player.title).font(.callout.weight(.semibold)).lineLimit(1)
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -37,6 +61,12 @@ struct PlayerBar: View {
                 Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundStyle(.secondary)
                 Slider(value: $player.volume, in: 0...100).controlSize(.small).frame(width: 90)
             }
+
+            Button { showsQueue.toggle() } label: { Image(systemName: "list.bullet") }
+                .buttonStyle(.borderless)
+                .imageScale(.large)
+                .help("Up Next")
+                .popover(isPresented: $showsQueue, arrowEdge: .top) { QueueView() }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

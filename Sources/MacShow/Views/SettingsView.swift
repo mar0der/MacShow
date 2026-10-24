@@ -34,7 +34,7 @@ struct FoldersSettings: View {
                 if library.isScanning {
                     ProgressView().controlSize(.small)
                 }
-                Button("Rescan") { Task { await library.rescanAll() } }
+                Button("Rescan") { library.rescanAll() }
                     .disabled(library.isScanning)
             }
         }

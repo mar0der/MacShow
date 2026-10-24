@@ -11,8 +11,10 @@ public final class LibraryScanner: Sendable {
     let database: LibraryDatabase
     let artwork: ArtworkStore
     private let folderArt = FolderArtCache()
+    /// FFmpeg reads block, so they run here rather than on Swift's cooperative pool.
+    private let readQueue = DispatchQueue(label: "MacShow.LibraryScanner.read", qos: .utility, attributes: .concurrent)
     private static let parallelReads = 6
-    private static let batchSize = 100
+    private static let batchSize = 500
 
     public init(database: LibraryDatabase, artwork: ArtworkStore) {
         self.database = database
@@ -21,11 +23,12 @@ public final class LibraryScanner: Sendable {
 
     /// Indexes `folder` recursively: reads new and changed files (by size and
     /// modification date) and removes items whose files are gone. A folder that
-    /// doesn't exist (an unplugged drive) is left untouched.
+    /// doesn't exist (an unplugged drive), or one whose listing hit an error, has
+    /// nothing removed: a partial listing must not look like deleted files.
     @discardableResult
     public func scan(folder: URL) async -> ScanResult {
         let folder = URL(fileURLWithPath: folder.canonicalPath)
-        guard let files = Self.mediaFiles(in: folder) else { return ScanResult() }
+        guard let (files, isComplete) = Self.mediaFiles(in: folder) else { return ScanResult() }
 
         let stamps = (try? database.fileStamps(under: folder.path)) ?? [:]
         var pending: [MediaFile] = []
@@ -44,7 +47,11 @@ public final class LibraryScanner: Sendable {
                 guard nextIndex < pending.count else { return }
                 let file = pending[nextIndex]
                 nextIndex += 1
-                group.addTask { self.readItem(file.url, size: file.size, modified: file.modified) }
+                group.addTask {
+                    await withCheckedContinuation { continuation in
+                        self.readQueue.async { continuation.resume(returning: self.readItem(file.url, size: file.size, modified: file.modified)) }
+                    }
+                }
             }
             for _ in 0..<Self.parallelReads { startNextRead() }
             for await item in group {
@@ -58,6 +65,7 @@ public final class LibraryScanner: Sendable {
             try? database.upsert(batch)
         }
 
+        guard isComplete else { return result }
         let missing = stamps.keys.filter { !seen.contains($0) }
         try? database.deleteItems(paths: missing)
         result.removed = missing.count
@@ -66,13 +74,19 @@ public final class LibraryScanner: Sendable {
 
     private typealias MediaFile = (url: URL, size: Int64, modified: Double)
 
-    /// Every media file under `folder`, or nil if it isn't a reachable folder.
-    private static func mediaFiles(in folder: URL) -> [MediaFile]? {
+    /// Every media file under `folder`, and whether the listing finished without
+    /// errors; nil if `folder` isn't a reachable folder.
+    private static func mediaFiles(in folder: URL) -> ([MediaFile], isComplete: Bool)? {
         let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
         var isDirectory: ObjCBool = false
+        var isComplete = true
         guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue,
               let enumerator = FileManager.default.enumerator(
-                  at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                  at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                  errorHandler: { _, _ in
+                      isComplete = false
+                      return true
+                  }
               )
         else { return nil }
 
@@ -81,7 +95,7 @@ public final class LibraryScanner: Sendable {
             guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true else { continue }
             files.append((url, Int64(values.fileSize ?? 0), values.contentModificationDate?.timeIntervalSince1970 ?? 0))
         }
-        return files
+        return (files, isComplete)
     }
 
     private func readItem(_ url: URL, size: Int64, modified: Double) -> MediaItem? {

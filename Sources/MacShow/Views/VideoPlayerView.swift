@@ -78,7 +78,10 @@ struct VideoPlayerView: View {
         }
         .background(.black)
         .onContinuousHover { _ in showControls() }
-        .onAppear(perform: showControls)
+        .onAppear {
+            // Never sit empty (e.g. if macOS restores the window at launch).
+            if player.isVideo { showControls() } else { dismissWindow(id: "video") }
+        }
         .onChange(of: player.isVideo) { _, isVideo in
             if !isVideo { dismissWindow(id: "video") }
         }

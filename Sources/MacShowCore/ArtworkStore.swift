@@ -24,6 +24,7 @@ public struct ArtworkStore: Sendable {
         let key = SHA256.hash(data: imageData).prefix(12).map { String(format: "%02x", $0) }.joined()
         let destination = url(for: key)
         if FileManager.default.fileExists(atPath: destination.path) { return key }
+        let temporary = directory.appendingPathComponent(".\(key)-\(UUID().uuidString).jpg")
 
         guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
               let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
@@ -31,10 +32,15 @@ public struct ArtworkStore: Sendable {
                   kCGImageSourceCreateThumbnailWithTransform: true,
                   kCGImageSourceThumbnailMaxPixelSize: Self.maxPixelSize,
               ] as CFDictionary),
-              let output = CGImageDestinationCreateWithURL(destination as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
+              let output = CGImageDestinationCreateWithURL(temporary as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
         else { return nil }
         CGImageDestinationAddImage(output, thumbnail, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
-        return CGImageDestinationFinalize(output) ? key : nil
+        // Written aside and renamed into place, so a reader never sees half a file.
+        guard CGImageDestinationFinalize(output), rename(temporary.path, destination.path) == 0 else {
+            try? FileManager.default.removeItem(at: temporary)
+            return nil
+        }
+        return key
     }
 
     /// A cover image file next to the media ("cover.jpg", "folder.png", …).

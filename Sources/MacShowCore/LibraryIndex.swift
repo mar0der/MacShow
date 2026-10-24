@@ -14,8 +14,11 @@ public struct Album: Identifiable, Hashable, Sendable {
 public struct Artist: Identifiable, Hashable, Sendable {
     public var id: String
     public var name: String
-    /// Newest first.
+    /// Albums credited to this artist, newest first.
     public var albums: [Album]
+    /// Every song by this artist, including ones on compilations.
+    public var songs: [MediaItem]
+    public var artworkKey: String? { albums.lazy.compactMap(\.artworkKey).first ?? songs.lazy.compactMap(\.artworkKey).first }
 }
 
 public struct Show: Identifiable, Hashable, Sendable {
@@ -51,6 +54,10 @@ public struct LibraryIndex: Sendable {
 
     public init() {}
 
+    public var isEmpty: Bool {
+        songs.isEmpty && movies.isEmpty && homeVideos.isEmpty && shows.isEmpty && books.isEmpty
+    }
+
     public init(items: [MediaItem]) {
         let byKind = Dictionary(grouping: items, by: \.kind)
         let music = byKind[.music] ?? []
@@ -67,9 +74,15 @@ public struct LibraryIndex: Sendable {
                 )
             }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        artists = Dictionary(grouping: albums) { $0.artist.lowercased() }
-            .map { key, albums in
-                Artist(id: key, name: albums[0].artist, albums: albums.sorted { ($0.year ?? 0) > ($1.year ?? 0) })
+        let albumsByArtist = Dictionary(grouping: albums) { $0.artist.lowercased() }
+        let songsByArtist = Dictionary(grouping: music.filter { $0.artist != nil }) { $0.artist!.lowercased() }
+        artists = Set(albumsByArtist.keys).union(songsByArtist.keys)
+            .subtracting(["various artists"])
+            .map { key in
+                let songs = (songsByArtist[key] ?? []).sorted(by: Self.trackOrder)
+                let albums = (albumsByArtist[key] ?? []).sorted { ($0.year ?? 0) > ($1.year ?? 0) }
+                let name = Self.mostCommon(songs.compactMap(\.artist)) ?? albums[0].artist
+                return Artist(id: key, name: name, albums: albums, songs: songs)
             }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 

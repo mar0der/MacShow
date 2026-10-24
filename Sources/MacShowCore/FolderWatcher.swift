@@ -34,8 +34,12 @@ public final class FolderWatcher {
 
     deinit {
         guard let stream else { return }
-        FSEventStreamStop(stream)
-        FSEventStreamInvalidate(stream)
+        // Stop on the callback queue, so no callback is still running with this
+        // (unretained) watcher once deinit returns.
+        queue.sync {
+            FSEventStreamStop(stream)
+            FSEventStreamInvalidate(stream)
+        }
         FSEventStreamRelease(stream)
     }
 }
