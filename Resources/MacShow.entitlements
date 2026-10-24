@@ -16,5 +16,8 @@
 	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
+	<!-- Missing album artwork from the iTunes Search API (can be turned off in Settings). -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

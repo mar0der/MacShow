@@ -35,6 +35,12 @@ struct DebugHooks: ViewModifier {
         if let book, defaults.bool(forKey: "debugOpenBook") { path.append(BookRef(id: book.id)) }
         if let book, defaults.object(forKey: "debugPlayBookPart") != nil {
             player.play(book.parts, startAt: defaults.integer(forKey: "debugPlayBookPart"), at: defaults.double(forKey: "debugPlayBookAt"))
+            if defaults.bool(forKey: "debugSleepEndOfChapter") {
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    player.sleepTimer = .endOfChapter
+                }
+            }
         }
         if let album = album("debugPlayAlbum") { player.play(album.tracks) }
         if let id = defaults.string(forKey: "debugOpenWindow") { openWindow(id: id) }

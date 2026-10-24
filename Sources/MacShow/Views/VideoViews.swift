@@ -35,6 +35,15 @@ struct VideoStill: View {
 
     var body: some View {
         ArtworkView(key: item.artworkKey ?? stillKey, title: item.title, cornerRadius: cornerRadius, aspectRatio: 16 / 9)
+            .opacity(library.isAvailable(item) ? 1 : 0.4)
+            .overlay {
+                if !library.isAvailable(item) {
+                    Label("Drive not connected", systemImage: "externaldrive.badge.xmark")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(.black.opacity(0.6), in: Capsule())
+                }
+            }
             .overlay(alignment: .bottom) {
                 if let saved = item.id.flatMap({ library.positions[$0] }), saved.isResumable || saved.isFinished {
                     if saved.isFinished {

@@ -58,8 +58,13 @@ final class Player {
         didSet { armSleepTimer() }
     }
     @ObservationIgnored private var sleepTask: Task<Void, Never>?
-    /// What "end of chapter" waits to change away from: (file, chapter).
-    @ObservationIgnored private var sleepChapterStart: (Int?, Int?)?
+    /// Where "end of chapter" pauses (seconds into the file).
+    @ObservationIgnored private var sleepChapterEnd: Double?
+    /// Set when you seek or skip, so "end of chapter" moves to the chapter you're in now.
+    @ObservationIgnored private var sleepNeedsRetarget = false
+    /// Where each queued file should start (resume points, or a chapter or
+    /// bookmark you picked), read by mpv's on_load hook on the event thread.
+    @ObservationIgnored nonisolated private let startTimes = StartTimes()
 
     /// Audiobooks keep their own speed; everything else plays at 1×.
     static let audiobookSpeedKey = "audiobookSpeed"
@@ -107,12 +112,16 @@ final class Player {
         ] {
             mpv_observe_property(mpv, 0, name, format)
         }
+        mpv_hook_add(mpv, 0, "on_load", 50)
         mpv_set_wakeup_callback(mpv, { context in
             let player = Unmanaged<Player>.fromOpaque(context!).takeUnretainedValue()
             player.eventQueue.async { player.drainEvents() }
         }, Unmanaged.passUnretained(self).toOpaque())
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.savePosition() }
+            MainActor.assumeIsolated {
+                self?.savePosition()
+                self?.library?.flushPendingWrites()  // the app exits right after this
+            }
         }
     }
 
@@ -123,6 +132,12 @@ final class Player {
     /// they were left.
     func play(_ items: [MediaItem], startAt index: Int = 0, fromBeginning: Bool = false, at time: Double? = nil) {
         guard items.indices.contains(index) else { return }
+        // Leave out files on a drive that isn't connected.
+        if let library, items.contains(where: { !library.isAvailable($0) }) {
+            let reachable = items.indices.filter { library.isAvailable(items[$0]) }
+            guard let start = reachable.firstIndex(of: index) else { return }
+            return play(reachable.map { items[$0] }, startAt: start, fromBeginning: fromBeginning, at: time)
+        }
         savePosition()
         command("stop")
         queue = items
@@ -132,14 +147,13 @@ final class Player {
         let isBook = items[index].kind == .audiobook
         let bookSpeed = UserDefaults.standard.double(forKey: Self.audiobookSpeedKey)
         speed = isBook && bookSpeed > 0 ? bookSpeed : 1
-        for (offset, item) in items.enumerated() {
-            let start = offset == index && (fromBeginning || time != nil) ? time : resumePoint(for: item)
-            if let start {
-                command("loadfile", item.path, "append", "-1", "start=\(Int(start))")
-            } else {
-                command("loadfile", item.path, "append")
-            }
+        var starts: [String: Double] = [:]
+        for item in items {
+            starts[item.path] = resumePoint(for: item)
+            command("loadfile", item.path, "append")
         }
+        starts[items[index].path] = fromBeginning ? nil : (time ?? starts[items[index].path])
+        startTimes.replace(with: starts)
         command("playlist-play-index", String(index))
         setFlag("pause", false)
     }
@@ -156,6 +170,7 @@ final class Player {
     func savePosition(publish: Bool = true) {
         guard let item = loadedItem, item.kind != .music, duration > 0, position > 0 else { return }
         library?.savePosition(position, duration: duration, for: item, publish: publish)
+        startTimes.set(library?.position(for: item)?.isResumable == true ? position : nil, for: item.path)
     }
 
     /// Sets the playback speed; for audiobooks it's remembered for next time.
@@ -181,6 +196,7 @@ final class Player {
     /// Next chapter within the file, or the next file of a folder book.
     func nextChapter() {
         if let chapter = chapterIndex, chapter + 1 < chapters().count {
+            userMoved()
             command("add", "chapter", "1")
         } else {
             next()
@@ -194,15 +210,18 @@ final class Player {
         if position - list[chapter].start > 3 || chapter == 0 && queueIndex.map({ $0 == 0 }) ?? true {
             seek(to: list[chapter].start)
         } else if chapter > 0 {
+            userMoved()
             command("add", "chapter", "-1")
         } else {
+            userMoved()
             command("playlist-prev")
         }
     }
 
     private func armSleepTimer() {
         sleepTask?.cancel()
-        sleepChapterStart = nil
+        sleepChapterEnd = nil
+        sleepNeedsRetarget = false
         switch sleepTimer {
         case .off:
             break
@@ -214,17 +233,22 @@ final class Player {
                 self.sleepTimer = .off
             }
         case .endOfChapter:
-            sleepChapterStart = (queueIndex, chapterIndex)
+            sleepChapterEnd = chapterEnd(at: position)
         }
     }
 
-    /// Pauses once the chapter (or, for folder books, the file) changes.
-    private func checkEndOfChapter() {
-        guard sleepTimer == .endOfChapter, let start = sleepChapterStart,
-              start.0 != queueIndex || start.1 != chapterIndex
-        else { return }
-        if !isPaused { togglePause() }
-        sleepTimer = .off
+    /// Where the chapter containing `time` ends: the next chapter's start, or
+    /// the end of the file (folder books, where each file is a chapter).
+    private func chapterEnd(at time: Double) -> Double {
+        let list = chapters()
+        guard let current = list.lastIndex(where: { $0.start <= time + 0.05 }), current + 1 < list.count else { return duration }
+        return list[current + 1].start
+    }
+
+    /// Marks a move you made (seek, skip, chapter or track change) so "end of
+    /// chapter" re-targets once mpv has landed.
+    private func userMoved() {
+        if sleepTimer == .endOfChapter { sleepNeedsRetarget = true }
     }
 
     /// mpv sets up its video output when a file loads; if the video window
@@ -269,16 +293,35 @@ final class Player {
     }
 
     func togglePause() { command("cycle", "pause") }
-    func seek(to seconds: Double) { command("seek", String(seconds), "absolute") }
-    func skip(_ seconds: Double) { command("seek", String(seconds), "relative") }
-    func next() { command("playlist-next") }
+    func seek(to seconds: Double) {
+        userMoved()
+        command("seek", String(seconds), "absolute")
+    }
+
+    func skip(_ seconds: Double) {
+        userMoved()
+        command("seek", String(seconds), "relative")
+    }
+
+    func next() {
+        userMoved()
+        command("playlist-next")
+    }
 
     /// Restarts the current track, or goes to the previous one near its start.
     func previous() {
-        if position > 3 { seek(to: 0) } else { command("playlist-prev") }
+        if position > 3 {
+            seek(to: 0)
+        } else {
+            userMoved()
+            command("playlist-prev")
+        }
     }
 
-    func playQueueItem(at index: Int) { command("playlist-play-index", String(index)) }
+    func playQueueItem(at index: Int) {
+        userMoved()
+        command("playlist-play-index", String(index))
+    }
 
     /// Inserts `items` right after the current one (or plays them if nothing is queued).
     func playNext(_ items: [MediaItem]) {
@@ -367,14 +410,29 @@ final class Player {
                 let name = String(cString: property.name)
                 let value = Self.value(of: property)
                 DispatchQueue.main.async { MainActor.assumeIsolated { self.apply(name, value) } }
+            case MPV_EVENT_HOOK:
+                // on_load: set this file's start point before mpv opens it.
+                let hook = event.data.assumingMemoryBound(to: mpv_event_hook.self).pointee
+                if String(cString: hook.name) == "on_load", let path = Self.string(mpv, "path"), let start = startTimes.time(for: path) {
+                    mpv_set_property_string(mpv, "file-local-options/start", String(start))
+                }
+                mpv_hook_continue(mpv, hook.id)
             case MPV_EVENT_FILE_LOADED:
                 let (info, hasVideo) = formatDescription()
                 let index = Int(Self.string(mpv, "playlist-pos") ?? "")
+                let path = Self.string(mpv, "path")
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
                         self.formatInfo = info
                         self.isVideo = hasVideo
-                        self.loadedItem = index.flatMap { self.queue.indices.contains($0) ? self.queue[$0] : nil }
+                        // Match by path: the queue may have changed since mpv reported the index.
+                        if let index, self.queue.indices.contains(index), self.queue[index].path == path {
+                            self.loadedItem = self.queue[index]
+                        } else {
+                            self.loadedItem = self.queue.first { $0.path == path }
+                        }
+                        self.position = 0
+                        self.lastSavedSecond = -1
                     }
                 }
             case MPV_EVENT_END_FILE:
@@ -385,12 +443,29 @@ final class Player {
                         if reason == MPV_END_FILE_REASON_EOF, let item = self.loadedItem, item.kind != .music {
                             let length = self.duration > 0 ? self.duration : item.duration
                             self.library?.savePosition(length, duration: length, for: item, publish: true)
+                            self.startTimes.set(nil, for: item.path)
+                        }
+                        // "End of chapter" at the end of a file: the next one starts paused.
+                        if reason == MPV_END_FILE_REASON_EOF, self.sleepTimer == .endOfChapter,
+                           (self.sleepChapterEnd ?? 0) >= self.duration - 1 {
+                            self.setFlag("pause", true)
+                            self.sleepTimer = .off
                         }
                         self.loadedItem = nil
+                        self.position = 0
+                        self.lastSavedSecond = -1
                     }
                 }
             case MPV_EVENT_PLAYBACK_RESTART:  // after a seek or a new file starts
-                DispatchQueue.main.async { MainActor.assumeIsolated { self.nowPlaying?.update() } }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        if self.sleepNeedsRetarget {
+                            self.sleepNeedsRetarget = false
+                            self.sleepChapterEnd = self.chapterEnd(at: self.position)
+                        }
+                        self.nowPlaying?.update()
+                    }
+                }
             case MPV_EVENT_LOG_MESSAGE:
                 let message = event.data.assumingMemoryBound(to: mpv_event_log_message.self).pointee
                 FileHandle.standardError.write(Data("[mpv \(String(cString: message.prefix))] \(String(cString: message.text))".utf8))
@@ -423,6 +498,10 @@ final class Player {
                 lastSavedSecond = bucket
                 savePosition(publish: false)
             }
+            if sleepTimer == .endOfChapter, !sleepNeedsRetarget, let end = sleepChapterEnd, end < duration - 1, position >= end - 0.3 {
+                if !isPaused { togglePause() }
+                sleepTimer = .off
+            }
             return
         case "duration": duration = value as? Double ?? 0
         case "pause":
@@ -433,10 +512,8 @@ final class Player {
         case "chapter-metadata/title": chapterTitle = value as? String
         case "playlist-pos":
             if let index = value as? Int, index >= 0, !queue.isEmpty { queueIndex = index }
-            checkEndOfChapter()
         case "chapter":
             chapterIndex = (value as? Int).flatMap { $0 >= 0 ? $0 : nil }
-            checkEndOfChapter()
         default: break
         }
         nowPlaying?.update()
@@ -463,4 +540,14 @@ final class Player {
         }
         return (parts.joined(separator: " · "), video != nil)
     }
+}
+
+/// Start times by file path, shared between the main thread and mpv's event thread.
+final class StartTimes: @unchecked Sendable {
+    private var times: [String: Double] = [:]
+    private let lock = NSLock()
+
+    func replace(with times: [String: Double]) { lock.withLock { self.times = times } }
+    func set(_ time: Double?, for path: String) { lock.withLock { times[path] = time } }
+    func time(for path: String) -> Double? { lock.withLock { times[path] } }
 }

@@ -58,6 +58,9 @@ public struct LibraryIndex: Sendable {
 
     public init() {}
 
+    /// Songs found more than once (the same track in several folders), best copy
+    /// first. Only the best copy appears in albums, artists and songs.
+    public var duplicates: [[MediaItem]] = []
     /// Episode id → the episode after it in its show.
     public var nextEpisode: [Int64: MediaItem] = [:]
 
@@ -67,11 +70,16 @@ public struct LibraryIndex: Sendable {
 
     public init(items: [MediaItem]) {
         let byKind = Dictionary(grouping: items, by: \.kind)
-        let music = byKind[.music] ?? []
+        let (music, duplicateGroups) = Self.removingDuplicates(byKind[.music] ?? [])
+        duplicates = duplicateGroups
 
         songs = music.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         songSearchKeys = songs.map { [$0.title, $0.artist, $0.album].compactMap { $0 }.joined(separator: " ").lowercased() }
-        albums = Dictionary(grouping: music, by: Self.albumKey)
+        // A folder whose tracks disagree on album artist (a compilation where only
+        // some tracks are tagged) stays one album, grouped by folder.
+        let mixedFolders = Set(Dictionary(grouping: music, by: Self.folderAlbumKey)
+            .filter { Set($0.value.map(\.albumArtist)).count > 1 }.keys)
+        albums = Dictionary(grouping: music) { mixedFolders.contains(Self.folderAlbumKey($0)) ? Self.folderAlbumKey($0) : Self.albumKey($0) }
             .map { key, tracks in
                 let sorted = tracks.sorted(by: Self.trackOrder)
                 return Album(
@@ -127,15 +135,49 @@ public struct LibraryIndex: Sendable {
 
     static let homeVideoMaxDuration: Double = 20 * 60
 
+    /// Groups copies of the same song (same title, artist, album, track number and
+    /// length to within a couple of seconds) and keeps the best one of each.
+    static func removingDuplicates(_ songs: [MediaItem]) -> (kept: [MediaItem], duplicates: [[MediaItem]]) {
+        let groups = Dictionary(grouping: songs) { song in
+            [song.title, song.artist ?? "", song.album ?? "", song.trackNumber.map(String.init) ?? "", String(Int(song.duration / 3))]
+                .joined(separator: "\u{1F}").lowercased()
+        }
+        var kept: [MediaItem] = []
+        var duplicates: [[MediaItem]] = []
+        for group in groups.values {
+            let ranked = group.sorted(by: isBetterCopy)
+            kept.append(ranked[0])
+            if ranked.count > 1 { duplicates.append(ranked) }
+        }
+        duplicates.sort { $0[0].title.localizedStandardCompare($1[0].title) == .orderedAscending }
+        return (kept, duplicates)
+    }
+
+    /// Lossless beats lossy, then a higher sample rate, then the larger file.
+    static func isBetterCopy(_ a: MediaItem, _ b: MediaItem) -> Bool {
+        func quality(_ item: MediaItem) -> (Int, Double, Int64) {
+            let parts = item.formatInfo.components(separatedBy: " · ")
+            let lossless = ["FLAC", "ALAC", "WAV", "PCM_S16LE", "PCM_S24LE", "APE", "WAVPACK", "DSD"].contains { parts.first?.hasPrefix($0) ?? false }
+            let rate = parts.last.flatMap { Double($0.replacingOccurrences(of: " kHz", with: "")) } ?? 0
+            return (lossless ? 1 : 0, rate, item.fileSize)
+        }
+        let left = quality(a), right = quality(b)
+        if left != right { return left > right }
+        return a.path < b.path
+    }
+
     /// Tracks with an album artist group by (album artist, album). Without one,
     /// an album is the album name within a folder, so a various-artists
     /// compilation stays together and untagged rips group by folder.
     static func albumKey(_ item: MediaItem) -> String {
-        let album = (item.album ?? folderName(item)).lowercased()
         if let albumArtist = item.albumArtist {
-            return "artist\u{1F}\(albumArtist.lowercased())\u{1F}\(album)"
+            return "artist\u{1F}\(albumArtist.lowercased())\u{1F}\((item.album ?? folderName(item)).lowercased())"
         }
-        return "folder\u{1F}\(item.url.deletingLastPathComponent().path.lowercased())\u{1F}\(album)"
+        return folderAlbumKey(item)
+    }
+
+    static func folderAlbumKey(_ item: MediaItem) -> String {
+        "folder\u{1F}\(item.url.deletingLastPathComponent().path.lowercased())\u{1F}\((item.album ?? folderName(item)).lowercased())"
     }
 
     /// The album artist tag, else the one artist on every track, else "Various Artists".

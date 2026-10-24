@@ -68,7 +68,7 @@ struct BookDetailView: View {
     @State private var fileChapters: [FileMetadata.Chapter] = []
     @State private var showsBookmarks = false
 
-    private static let speeds: [Double] = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+    private static let speeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
     private static let sleepMinutes = [5, 10, 15, 30, 45, 60]
 
     var body: some View {
@@ -115,9 +115,13 @@ struct BookDetailView: View {
 
     // MARK: Left column
 
-    private var isPlayingThis: Bool {
-        player.currentItem.map(book.parts.contains) ?? false
+    /// Which of this book's files is playing, by identity, not by queue
+    /// position (the book may sit behind songs in the queue).
+    private var playingPart: Int? {
+        player.currentItem.flatMap { book.parts.firstIndex(of: $0) }
     }
+
+    private var isPlayingThis: Bool { playingPart != nil }
 
     @ViewBuilder
     private func nowListening(progress: BookProgress, chapter: BookChapter?) -> some View {
@@ -170,7 +174,8 @@ struct BookDetailView: View {
     }
 
     private var speedMenu: some View {
-        let current = isPlayingThis ? player.speed : max(UserDefaults.standard.double(forKey: Player.audiobookSpeedKey), 1)
+        let saved = UserDefaults.standard.double(forKey: Player.audiobookSpeedKey)
+        let current = isPlayingThis ? player.speed : (saved > 0 ? saved : 1)
         return Menu {
             ForEach(Self.speeds, id: \.self) { speed in
                 Toggle(speed.formatted() + "×", isOn: Binding(get: { current == speed }, set: { _ in
@@ -240,7 +245,7 @@ struct BookDetailView: View {
             let position = isPlayingThis ? player.position : progress.elapsed
             return chapters.lastIndex { $0.start <= position + 0.5 }
         }
-        return isPlayingThis ? player.queueIndex : progress.partIndex
+        return playingPart ?? progress.partIndex
     }
 
     private func chapterRow(_ chapter: BookChapter, isCurrent: Bool, isDone: Bool) -> some View {
@@ -265,7 +270,7 @@ struct BookDetailView: View {
     }
 
     private func play(_ partIndex: Int, at time: Double) {
-        if isPlayingThis, player.queueIndex == partIndex {
+        if playingPart == partIndex {
             player.seek(to: time)
             if player.isPaused { player.togglePause() }
         } else {

@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import GRDB
@@ -15,6 +16,9 @@ public final class Library {
     public private(set) var positions: [Int64: PlaybackPosition] = [:]
     public private(set) var bookmarks: [Bookmark] = []
     public private(set) var folders: [WatchedFolder] = []
+    /// Watched folders that can't be reached right now (an unplugged drive).
+    /// Their items stay in the library, shown as unavailable.
+    public private(set) var offlineFolders: Set<String> = []
     public private(set) var isScanning = false
     /// Goes up each time `index` is replaced; cheap to watch for "the library changed".
     public private(set) var generation = 0
@@ -39,6 +43,11 @@ public final class Library {
     @ObservationIgnored private var refreshPending = false
     /// Watched folders as the file system spells them (what FSEvents reports).
     @ObservationIgnored private var watchedRoots: [String] = []
+    @ObservationIgnored private var volumeObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private var artworkTask: Task<Void, Never>?
+
+    /// Settings key: download cover art for albums that have none (default on).
+    public static let fetchArtworkKey = "fetchMissingArtwork"
     @ObservationIgnored private var started = false
 
     /// Scans and folder removals run one at a time, in order, so two scans never
@@ -113,6 +122,7 @@ public final class Library {
                     self.index = snapshot.0
                     self.playlists = snapshot.1
                     self.generation += 1
+                    if !self.isScanning { self.fetchMissingArtwork() }
                 }
                 self.refreshRunning = false
                 if self.refreshPending {
@@ -145,6 +155,26 @@ public final class Library {
         }
         reloadFolders()
         rescanAll()
+        // Drives coming and going: refresh what's reachable, index what came back.
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {
+            volumeObservers.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.volumesChanged() }
+            })
+        }
+    }
+
+    private func volumesChanged() {
+        let wasOffline = offlineFolders
+        reloadFolders()
+        for folder in folders where wasOffline.contains(folder.path) && !offlineFolders.contains(folder.path) {
+            enqueue(.scan(folder.path))
+        }
+    }
+
+    /// False for items on a drive that isn't connected.
+    public func isAvailable(_ item: MediaItem) -> Bool {
+        offlineFolders.isEmpty || !offlineFolders.contains { item.path.hasPrefix($0 + "/") }
     }
 
     public func rescanAll() {
@@ -207,6 +237,7 @@ public final class Library {
     private func reloadFolders() {
         folders = (try? database.watchedFolders()) ?? []
         watchedRoots = folders.map { URL(fileURLWithPath: $0.path).canonicalPath }
+        offlineFolders = Set(folders.map(\.path).filter { !FileManager.default.fileExists(atPath: $0) })
         for folder in folders where !accessedFolders.contains(folder.path) {
             guard let bookmark = folder.bookmark else { continue }
             var stale = false
@@ -239,6 +270,11 @@ public final class Library {
         }
         let database = database
         writeQueue.async { try? database.savePosition(position, duration: duration, for: id) }
+    }
+
+    /// Blocks until queued position writes are on disk (call before quitting).
+    public func flushPendingWrites() {
+        writeQueue.sync {}
     }
 
     /// The latest resume point for an item, including saves not yet published.
@@ -297,6 +333,38 @@ public final class Library {
     public func deleteBookmark(_ bookmark: Bookmark) {
         try? database.deleteBookmark(bookmark)
         bookmarks.removeAll { $0.id == bookmark.id }
+    }
+
+    // MARK: Album artwork
+
+    /// Looks up cover art for albums without any, one album every few seconds,
+    /// each album once (unless the lookup failed, e.g. while offline).
+    private func fetchMissingArtwork() {
+        guard UserDefaults.standard.object(forKey: Self.fetchArtworkKey) as? Bool ?? true, artworkTask == nil else { return }
+        let tried = (try? database.artworkLookups()) ?? []
+        let albums = index.albums.filter { $0.artworkKey == nil && !tried.contains($0.id) }
+        guard !albums.isEmpty else { return }
+        let database = database, artwork = artwork
+        artworkTask = Task.detached(priority: .utility) { [weak self] in
+            let fetcher = ArtworkFetcher()
+            for album in albums {
+                switch await fetcher.artwork(artist: album.artist, album: album.title) {
+                case .found(let data):
+                    if let key = artwork.store(data) { try? database.setArtworkKey(key, forPaths: album.tracks.map(\.path)) }
+                    try? database.recordArtworkLookup(albumId: album.id)
+                case .notFound:
+                    try? database.recordArtworkLookup(albumId: album.id)
+                case .failed:
+                    break
+                }
+                try? await Task.sleep(for: .seconds(3))  // the Search API allows about 20 requests a minute
+            }
+            await self?.artworkLookupsFinished()
+        }
+    }
+
+    private func artworkLookupsFinished() {
+        artworkTask = nil
     }
 
     // MARK: Video stills

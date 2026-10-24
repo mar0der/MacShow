@@ -76,6 +76,7 @@ public final class LibraryDatabase: Sendable {
         registerPlaylistMigration(&migrator)
         registerPositionMigration(&migrator)
         registerBookmarkMigration(&migrator)
+        registerArtworkLookupMigration(&migrator)
         return migrator
     }
 
@@ -102,6 +103,8 @@ public final class LibraryDatabase: Sendable {
                 if let existing = try MediaItem.filter(Column("path") == item.path).fetchOne(db) {
                     item.id = existing.id
                     item.addedAt = existing.addedAt
+                    // Keep downloaded cover art when the file itself still has none.
+                    item.artworkKey = item.artworkKey ?? existing.artworkKey
                     try item.update(db)
                 } else {
                     try item.insert(db)

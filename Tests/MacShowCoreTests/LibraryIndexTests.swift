@@ -46,6 +46,38 @@ struct LibraryIndexTests {
         #expect(untagged.artist == "Modern Talking")
     }
 
+    @Test func keepsTheBestCopyOfDuplicateSongs() throws {
+        func song(_ path: String, _ title: String, track: Int, format: String) -> MediaItem {
+            var item = makeItem(path, title: title, artist: "Billy Idol", album: "Dream Into It", track: track)
+            item.albumArtist = "Billy Idol"
+            item.formatInfo = format
+            return item
+        }
+        let aac = song("/Music/Music/Media/Billy Idol/77.m4a", "77", track: 2, format: "AAC · 44.1 kHz")
+        let flac = song("/Music/Billy Idol [Stereo]/02 77.flac", "77", track: 2, format: "FLAC · 48 kHz")
+        let hiRes = song("/Music/Billy Idol [Hi-Res]/02 77.flac", "77", track: 2, format: "FLAC · 96 kHz")
+        let other = song("/Music/Billy Idol [Stereo]/03 Too Much Fun.flac", "Too Much Fun", track: 3, format: "FLAC · 48 kHz")
+
+        let index = LibraryIndex(items: [aac, flac, hiRes, other])
+        #expect(index.songs.count == 2)
+        #expect(index.albums.count == 1)
+        #expect(index.albums[0].tracks.map(\.path) == [hiRes.path, other.path])
+        #expect(index.duplicates.count == 1)
+        #expect(index.duplicates[0].map(\.path) == [hiRes.path, flac.path, aac.path])
+    }
+
+    @Test func partlyTaggedCompilationStaysOneAlbum() throws {
+        var tagged = makeItem("/m/Rock Legends/01.flac", artist: "AC/DC", album: "Rock Legends", track: 1)
+        tagged.albumArtist = "AC/DC"
+        let index = LibraryIndex(items: [
+            tagged,
+            makeItem("/m/Rock Legends/02.flac", artist: "Deep Purple", album: "Rock Legends", track: 2),
+            makeItem("/m/Rock Legends/03.flac", artist: "T. Rex", album: "Rock Legends", track: 3),
+        ])
+        #expect(index.albums.count == 1)
+        #expect(index.albums[0].tracks.count == 3)
+    }
+
     @Test func groupsEpisodesIntoShows() {
         let index = LibraryIndex(items: [
             makeItem("/tv/s2e1.mkv", kind: .episode, show: "Severance", season: 2, episode: 1),
@@ -66,5 +98,27 @@ struct LibraryIndexTests {
         #expect(index.books.map(\.title) == ["Dune", "Emma"])
         #expect(index.books[0].parts.map(\.path) == ["/books/Dune/01 Part.mp3", "/books/Dune/02 Part.mp3"])
         #expect(index.books[0].author == "Frank Herbert")
+    }
+}
+
+struct ArtworkFetcherTests {
+    private let results = [
+        ArtworkFetcher.SearchResult(collectionName: "Kamikaze", artistName: "Eminem", artworkUrl100: "https://example.com/a/100x100bb.jpg"),
+        ArtworkFetcher.SearchResult(collectionName: "The Death of Slim Shady (Coup De Grâce)", artistName: "Eminem", artworkUrl100: "https://example.com/b/100x100bb.jpg"),
+        ArtworkFetcher.SearchResult(collectionName: "Kamikaze", artistName: "Some Tribute Band", artworkUrl100: "https://example.com/c/100x100bb.jpg"),
+    ]
+
+    @Test func matchesAlbumAndArtistIgnoringPunctuationAndExtras() {
+        #expect(ArtworkFetcher.bestMatch(in: results, artist: "Eminem", album: "Kamikaze")?.artworkUrl100?.contains("/a/") == true)
+        #expect(ArtworkFetcher.bestMatch(in: results, artist: "Eminem", album: "The Death of Slim Shady [Deluxe]")?.artworkUrl100?.contains("/b/") == true)
+    }
+
+    @Test func noMatchForADifferentArtist() {
+        #expect(ArtworkFetcher.bestMatch(in: results, artist: "Metallica", album: "Kamikaze") == nil)
+    }
+
+    @Test func normalizes() {
+        #expect(ArtworkFetcher.normalize("Hardwired…To Self-Destruct (Deluxe)") == "hardwiredtoselfdestruct")
+        #expect(ArtworkFetcher.normalize("Coup De Grâce") == "coupdegrace")
     }
 }

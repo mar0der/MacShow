@@ -61,6 +61,10 @@ final class NowPlaying {
         if let artist = item?.artist ?? item?.show { info[MPMediaItemPropertyArtist] = artist }
         if let album = item?.album { info[MPMediaItemPropertyAlbumTitle] = album }
         if let artwork = artwork(for: item?.artworkKey) { info[MPMediaItemPropertyArtwork] = artwork }
+        // 15 s / 30 s skip buttons only make sense for audiobooks.
+        let isBook = item?.kind == .audiobook
+        MPRemoteCommandCenter.shared().skipBackwardCommand.isEnabled = isBook
+        MPRemoteCommandCenter.shared().skipForwardCommand.isEnabled = isBook
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = player.isPaused ? .paused : .playing
     }

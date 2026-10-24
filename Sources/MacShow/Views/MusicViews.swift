@@ -146,6 +146,7 @@ struct TrackRow: View {
     var showsArtist = false
     let isCurrent: Bool
     let play: () -> Void
+    @Environment(Library.self) private var library
 
     var body: some View {
         HStack(spacing: 14) {
@@ -168,6 +169,9 @@ struct TrackRow: View {
             if track.isProtected {
                 Image(systemName: "lock.fill").foregroundStyle(.secondary)
                     .help("Copy-protected: plays only in the app it came from")
+            } else if !library.isAvailable(track) {
+                Image(systemName: "externaldrive.badge.xmark").foregroundStyle(.secondary)
+                    .help("On a drive that isn't connected")
             }
             Text(Format.time(track.duration)).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
         }
@@ -176,7 +180,7 @@ struct TrackRow: View {
         .background(isCurrent ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: play)
-        .opacity(track.isProtected ? 0.5 : 1)
+        .opacity(track.isProtected || !library.isAvailable(track) ? 0.5 : 1)
     }
 }
 
