@@ -1,0 +1,379 @@
+MacShow - Third-Party Acknowledgements
+=====================================
+
+MacShow is licensed under the MIT License. It statically links the
+open-source components listed below. Each entry gives the component's name,
+homepage, version used, SPDX license identifier, and the copyright notice
+line(s) copied verbatim from the project's own license/notice files (the
+source file is named in brackets). Where no copyright line exists in those
+files, a link to the project's license file is given instead.
+
+The full license texts are in this folder, named by SPDX identifier:
+
+  Apache-2.0.txt          BSD-2-Clause.txt        BSD-3-Clause.txt
+  FTL.txt                 ISC.txt                 LGPL-2.1-or-later.txt
+  LGPL-3.0-or-later.txt   MIT.txt                 MIT-Modern-Variant.txt
+  MPL-1.1.txt             Zlib.txt                glslang-LICENSE.txt
+
+LGPL-3.0-or-later.txt contains the GNU LGPL version 3 followed by the full
+text of the GNU GPL version 3, which the LGPL version 3 incorporates.
+
+Versions are those used by MPVKit 1.1.0-n9.0.2 (LGPL build, product
+"MPVKit") and GRDB.swift 7.11.1.
+
+
+===============================================================================
+1. MPVKit
+===============================================================================
+Homepage:  https://github.com/mpvkit/MPVKit
+Version:   1.1.0-n9.0.2
+License:   LGPL-3.0-only (LICENSE contains the LGPL v3 text; README states
+           "`MPVKit` source alone is licensed under the LGPL v3.0.")
+           Text: LGPL-3.0-or-later.txt (identical license text)
+Copyright notice: see https://github.com/mpvkit/MPVKit/blob/1.1.0-n9.0.2/LICENSE
+
+
+===============================================================================
+2. mpv / libmpv
+===============================================================================
+Homepage:  https://mpv.io/  (source: https://github.com/mpv-player/mpv)
+Version:   v0.41.0, built with -Dgpl=false
+License:   LGPL-2.1-or-later
+           Text: LGPL-2.1-or-later.txt
+           Some source files are under more liberal licenses (BSD, MIT, ISC);
+           see the Copyright file and individual source file headers.
+Copyright notice: see https://github.com/mpv-player/mpv/blob/v0.41.0/Copyright
+
+
+===============================================================================
+3. FFmpeg
+===============================================================================
+Homepage:  https://ffmpeg.org/
+Version:   n9.0.2, configured with --enable-version3 (no --enable-gpl)
+License:   LGPL-3.0-or-later
+           Text: LGPL-3.0-or-later.txt
+Copyright notice: see https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/LICENSE.md
+
+FFmpeg's LICENSE.md notes that libavcodec/jfdctfst.c,
+libavcodec/jfdctint_template.c and libavcodec/jrevdct.c are taken from libjpeg.
+As required by those files when only executable code is distributed:
+
+  this software is based in part on the work of the Independent JPEG Group
+
+Copyright lines in those files [file headers]:
+  This software is copyright (C) 1991, 1992, Thomas G. Lane.   (jrevdct.c)
+  This software is copyright (C) 1994-1996, Thomas G. Lane.    (jfdctfst.c)
+  This software is copyright (C) 1991-1996, Thomas G. Lane.    (jfdctint_template.c)
+
+
+===============================================================================
+4. libplacebo
+===============================================================================
+Homepage:  https://code.videolan.org/videolan/libplacebo
+Version:   v7.360.1
+License:   LGPL-2.1-or-later
+           Text: LGPL-2.1-or-later.txt
+Copyright notice: see https://github.com/haasn/libplacebo/blob/v7.360.1/LICENSE
+
+Embedded in libplacebo:
+
+  fast_float (https://github.com/fastfloat/fast_float)
+    License: Apache-2.0 OR BSL-1.0 OR MIT (used under MIT). Text: MIT.txt
+    Copyright (c) 2021 The fast_float authors   [LICENSE-MIT]
+
+  glad-generated OpenGL loader (https://github.com/Dav1dde/glad)
+    glad README: "The generated code from glad is any of Public Domain,
+    WTFPL or CC0." The Khronos specification material it is generated from
+    is under Apache-2.0. Text: Apache-2.0.txt
+    Copyright (c) 2013-2020 The Khronos Group Inc.   [LICENSE, "The Khronos Specifications"]
+
+
+===============================================================================
+5. libass
+===============================================================================
+Homepage:  https://github.com/libass/libass
+Version:   0.17.5
+License:   ISC
+           Text: ISC.txt
+Copyright (C) 2006-2016 libass contributors   [COPYING]
+
+
+===============================================================================
+6. FreeType
+===============================================================================
+Homepage:  https://freetype.org/
+Version:   2.14.3 (tag VER-2-14-3)
+License:   FTL (FreeType is dual-licensed FTL OR GPL-2.0-or-later; MacShow
+           uses it under the FreeType License)
+           Text: FTL.txt
+Copyright 1996-2002, 2006 by
+David Turner, Robert Wilhelm, and Werner Lemberg   [docs/FTL.TXT]
+Copyright (C) 2006-2026 by
+David Turner, Robert Wilhelm, and Werner Lemberg.  [README]
+
+Credit required by the FreeType License:
+
+  Portions of this software are copyright © 2026 The FreeType
+  Project (https://freetype.org).  All rights reserved.
+
+
+===============================================================================
+7. HarfBuzz
+===============================================================================
+Homepage:  https://harfbuzz.github.io/  (source: https://github.com/harfbuzz/harfbuzz)
+Version:   14.2.0
+License:   MIT-Modern-Variant (the license HarfBuzz calls "Old MIT")
+           Text: MIT-Modern-Variant.txt
+Copyright notice [COPYING]:
+Copyright © 2010-2022  Google, Inc.
+Copyright © 2015-2020  Ebrahim Byagowi
+Copyright © 2019,2020  Facebook, Inc.
+Copyright © 2012,2015  Mozilla Foundation
+Copyright © 2011  Codethink Limited
+Copyright © 2008,2010  Nokia Corporation and/or its subsidiary(-ies)
+Copyright © 2009  Keith Stribley
+Copyright © 2011  Martin Hosken and SIL International
+Copyright © 2007  Chris Wilson
+Copyright © 2005,2006,2020,2021,2022,2023  Behdad Esfahbod
+Copyright © 2004,2007,2008,2009,2010,2013,2021,2022,2023  Red Hat, Inc.
+Copyright © 1998-2005  David Turner and Werner Lemberg
+Copyright © 2016  Igalia S.L.
+Copyright © 2022  Matthias Clasen
+Copyright © 2018,2021  Khaled Hosny
+Copyright © 2018,2019,2020  Adobe, Inc
+Copyright © 2013-2015  Alexei Podtelezhnikov
+
+Universal Shaping Engine data (src/ms-use): MIT. Text: MIT.txt
+Copyright (c) Microsoft Corporation.   [src/ms-use/COPYING]
+
+
+===============================================================================
+8. GNU FriBidi
+===============================================================================
+Homepage:  https://github.com/fribidi/fribidi
+Version:   v1.0.16
+License:   LGPL-2.1-or-later
+           Text: LGPL-2.1-or-later.txt
+Copyright notice: see https://github.com/fribidi/fribidi/blob/v1.0.16/COPYING
+                  (authors listed in https://github.com/fribidi/fribidi/blob/v1.0.16/AUTHORS)
+
+
+===============================================================================
+9. libunibreak
+===============================================================================
+Homepage:  https://github.com/adah1972/libunibreak
+Version:   6.1 (tag libunibreak_6_1)
+License:   Zlib
+           Text: Zlib.txt
+Copyright notice [LICENCE]:
+Copyright (C) Wu Yongwei <wuyongwei at gmail dot com>
+Copyright (C) Tom Hacohen <tom at stosb dot com>
+Copyright (C) Petr Filipsky <philodej at gmail dot com>
+Copyright (C) Andreas Röver <roever at users dot sf dot net>
+
+
+===============================================================================
+10. dav1d
+===============================================================================
+Homepage:  https://code.videolan.org/videolan/dav1d
+Version:   1.5.3
+License:   BSD-2-Clause
+           Text: BSD-2-Clause.txt
+Copyright © 2018-2025, VideoLAN and dav1d authors   [COPYING]
+
+
+===============================================================================
+11. uavs3d
+===============================================================================
+Homepage:  https://github.com/uavs3/uavs3d
+Version:   master branch (MPVKit's libuavs3d-build 1.2.1-fix clones the
+           default branch)
+License:   BSD-3-Clause
+           Text: BSD-3-Clause.txt
+Copyright (c) 2018-2022 ["Peking University Shenzhen Graduate School", "Peng Cheng Laboratory", and "Guangdong Bohua UHD Innovation Corporation"]   [COPYING]
+
+Clause 3 of the uavs3d license names the organizations as: Peking University
+Shenzhen Graduate School, Peng Cheng Laboratory and Guangdong Bohua UHD
+Innovation Corporation.
+
+
+===============================================================================
+12. libdovi (dovi_tool)
+===============================================================================
+Homepage:  https://github.com/quietvoid/dovi_tool
+Version:   libdovi 3.3.2
+License:   MIT
+           Text: MIT.txt
+Copyright (c) 2025 quietvoid   [dolby_vision/LICENSE]
+
+
+===============================================================================
+13. Little CMS (lcms2)
+===============================================================================
+Homepage:  https://www.littlecms.com/  (source: https://github.com/mm2/Little-CMS)
+Version:   2.17
+License:   MIT
+           Text: MIT.txt
+Copyright (c) 2023 Marti Maria Saguer   [LICENSE]
+
+
+===============================================================================
+14. MoltenVK
+===============================================================================
+Homepage:  https://github.com/KhronosGroup/MoltenVK
+Version:   v1.4.2
+License:   Apache-2.0
+           Text: Apache-2.0.txt
+NOTICE file: none in the repository.
+Copyright (c) 2015-2026 [The Brenwill Workshop Ltd.](http://www.brenwill.com)   [README.md]
+
+Embedded in MoltenVK (MoltenVK ExternalRevisions):
+
+  SPIRV-Cross (https://github.com/KhronosGroup/SPIRV-Cross)
+    License: Apache-2.0. Text: Apache-2.0.txt. NOTICE file: none.
+    Copyright notice: see https://github.com/KhronosGroup/SPIRV-Cross/blob/6c09849fe88c48eaed08413aa022aaa136a3a057/LICENSE
+
+  SPIRV-Tools (https://github.com/KhronosGroup/SPIRV-Tools)
+    License: Apache-2.0. Text: Apache-2.0.txt. NOTICE file: none.
+    Copyright notice: see https://github.com/KhronosGroup/SPIRV-Tools/blob/0d6fd73ca73830ccab5fa1f00ed5ed40124e2c55/LICENSE
+
+  cereal (https://github.com/USCiLab/cereal)
+    License: BSD-3-Clause. Text: BSD-3-Clause.txt
+    Copyright (c) 2013-2022, Randolph Voorhies, Shane Grant   [LICENSE]
+
+
+===============================================================================
+15. shaderc
+===============================================================================
+Homepage:  https://github.com/google/shaderc
+Version:   v2025.5 (libshaderc_combined)
+License:   Apache-2.0
+           Text: Apache-2.0.txt
+NOTICE file: none in the repository.
+Copyright notice: see https://github.com/google/shaderc/blob/v2025.5/LICENSE
+
+Embedded in libshaderc_combined:
+
+  glslang (https://github.com/KhronosGroup/glslang)
+    License: multiple (BSD-3-Clause, BSD-2-Clause, MIT, Apache-2.0, an NVIDIA
+    license for the preprocessor, and GPL-3.0 with the Bison exception
+    as described in its LICENSE.txt).
+    Text: glslang-LICENSE.txt (verbatim copy of glslang LICENSE.txt at
+    commit 7a47e2531cb334982b2a2dd8513dca0a3de4373d)
+    Copyright lines in LICENSE.txt:
+    // Copyright (C) 2015-2018 Google, Inc.
+    // Copyright (C) <various other dates and companies>
+    Copyright 2020 The Khronos Group Inc
+    Copyright (c) 2002, NVIDIA Corporation.
+    ** Copyright (c) 2014-2016 The Khronos Group Inc.
+
+  SPIRV-Tools (https://github.com/KhronosGroup/SPIRV-Tools)
+    License: Apache-2.0. Text: Apache-2.0.txt. NOTICE file: none.
+    Copyright notice: see https://github.com/KhronosGroup/SPIRV-Tools/blob/262bdab48146c937467f826699a40da0fdfc0f1a/LICENSE
+
+
+===============================================================================
+16. libbluray
+===============================================================================
+Homepage:  https://www.videolan.org/developers/libbluray.html
+Version:   1.4.0
+License:   LGPL-2.1-or-later
+           Text: LGPL-2.1-or-later.txt
+Copyright notice: see https://code.videolan.org/videolan/libbluray/-/blob/1.4.0/COPYING
+
+Embedded in libbluray (built with -Dembed_udfread=true):
+
+  libudfread (https://code.videolan.org/videolan/libudfread)
+    License: LGPL-2.1-or-later. Text: LGPL-2.1-or-later.txt
+    Copyright notice: see https://code.videolan.org/videolan/libudfread/-/blob/c3cd5cbb097924557ea4d9da1ff76a74620c51a8/COPYING
+
+
+===============================================================================
+17. uchardet
+===============================================================================
+Homepage:  https://www.freedesktop.org/wiki/Software/uchardet/
+Version:   v0.0.8
+License:   MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later
+           Texts: MPL-1.1.txt, LGPL-2.1-or-later.txt
+Copyright notice: see https://gitlab.freedesktop.org/uchardet/uchardet/-/blob/v0.0.8/COPYING
+
+
+===============================================================================
+18. GnuTLS
+===============================================================================
+Homepage:  https://gnutls.org/
+Version:   3.8.11
+License:   LGPL-2.1-or-later (the libgnutls library)
+           Text: LGPL-2.1-or-later.txt
+Copyright notice: see https://github.com/gnutls/gnutls/blob/3.8.11/COPYING.LESSERv2
+
+Embedded in GnuTLS:
+
+  inih (lib/inih)
+    License: BSD-3-Clause. Text: BSD-3-Clause.txt
+    Copyright (c) 2009, Ben Hoyt   [lib/inih/LICENSE.txt]
+
+  libtasn1 (minitasn1, built with --with-included-libtasn1)
+    License: LGPL-2.1-or-later. Text: LGPL-2.1-or-later.txt
+    Copyright notice: see https://gitlab.com/gnutls/libtasn1
+
+  libunistring subset (built with --with-included-unistring; imported with
+  gnulib --lgpl=3orGPLv2)
+    License: LGPL-3.0-or-later OR GPL-2.0-or-later. Text: LGPL-3.0-or-later.txt
+    Copyright notice: see https://www.gnu.org/software/libunistring/
+
+
+===============================================================================
+19. GNU Nettle
+===============================================================================
+Homepage:  https://www.lysator.liu.se/~nisse/nettle/
+Version:   3.10 (tag nettle_3.10_release_20240616)
+License:   LGPL-3.0-or-later OR GPL-2.0-or-later (used under LGPL-3.0-or-later)
+           Text: LGPL-3.0-or-later.txt
+Copyright notice: see https://git.lysator.liu.se/nettle/nettle/-/blob/nettle_3.10_release_20240616/README
+
+
+===============================================================================
+20. GNU MP (GMP)
+===============================================================================
+Homepage:  https://gmplib.org/
+Version:   6.2.1
+License:   LGPL-3.0-or-later OR GPL-2.0-or-later (used under LGPL-3.0-or-later)
+           Text: LGPL-3.0-or-later.txt
+Copyright 1991, 1996, 1999, 2000, 2007 Free Software Foundation, Inc.   [README]
+
+
+===============================================================================
+21. OpenSSL
+===============================================================================
+Homepage:  https://www.openssl.org/
+Version:   3.3.5
+License:   Apache-2.0
+           Text: Apache-2.0.txt
+NOTICE file: none in the repository.
+Copyright notice [README.md]:
+Copyright (c) 1998-2025 The OpenSSL Project Authors
+Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson
+
+
+===============================================================================
+22. LuaJIT
+===============================================================================
+Homepage:  https://luajit.org/
+Version:   v2.1 branch (MPVKit's libluajit-build 2.1.0-fix)
+License:   MIT
+           Text: MIT.txt
+Copyright notice [COPYRIGHT]:
+Copyright (C) 2005-2026 Mike Pall. All rights reserved.
+Copyright (C) 1994-2012 Lua.org, PUC-Rio.   (Lua 5.1/5.2 code, MIT)
+LuaJIT also includes dlmalloc by Doug Lea, released to the public domain.
+
+
+===============================================================================
+23. GRDB.swift
+===============================================================================
+Homepage:  https://github.com/groue/GRDB.swift
+Version:   7.11.1
+License:   MIT
+           Text: MIT.txt
+Copyright (C) 2015-2025 Gwendal Roué   [LICENSE]

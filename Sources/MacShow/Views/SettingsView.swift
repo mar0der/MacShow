@@ -8,7 +8,7 @@ struct SettingsView: View {
             DuplicatesSettings().tabItem { Label("Duplicates", systemImage: "square.on.square") }
             AboutView().tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 600, height: 520)
+        .frame(width: 600, height: 580)
     }
 }
 
@@ -46,6 +46,7 @@ struct LibrarySettings: View {
                 Text("Watched Folders")
             } footer: {
                 Text("New files in these folders are added automatically. Folders on an external drive come back when it's plugged in.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Section("Purchases from Apple") {
@@ -60,6 +61,7 @@ struct LibrarySettings: View {
                 Toggle("Download missing album artwork", isOn: $fetchArtwork)
             } footer: {
                 Text("Looks up covers for albums that have none on the iTunes Store. Only album and artist names are sent.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .formStyle(.grouped)

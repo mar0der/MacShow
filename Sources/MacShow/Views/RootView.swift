@@ -84,9 +84,6 @@ struct RootView: View {
             #endif
         }
         .searchable(text: $search, placement: .sidebar, prompt: "Search everything")
-        .onChange(of: player.isVideo) { _, isVideo in
-            if isVideo { openWindow(id: "video") }
-        }
     }
 
     private var sidebar: some View {

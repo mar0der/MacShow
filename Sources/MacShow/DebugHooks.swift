@@ -12,6 +12,7 @@ struct DebugHooks: ViewModifier {
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @State private var done = false
 
     func body(content: Content) -> some View {
@@ -48,6 +49,7 @@ struct DebugHooks: ViewModifier {
         }
         if let album = album("debugPlayAlbum") { player.play(album.tracks) }
         if let id = defaults.string(forKey: "debugOpenWindow") { openWindow(id: id) }
+        if defaults.bool(forKey: "debugOpenSettings") { openSettings() }
         if defaults.bool(forKey: "debugLogPlayer") {
             Task {
                 while true {

@@ -28,8 +28,17 @@ xcrun stapler staple build/MacShow.dmg
 ```
 
 If notarization reports problems with the bundled libraries, `xcrun notarytool log <id>`
-lists them. mpv is set to load no Lua scripts, so LuaJIT shouldn't need the
-`allow-jit` entitlement.
+lists them. mpv is set not to load any Lua scripts (user scripts, config, and its
+built-in ones like the stats overlay and console), so LuaJIT should never start and
+the `allow-jit` entitlement shouldn't be needed. Check this on the first hardened
+build by playing a file and watching Console for code-signing errors.
+
+## Licenses
+
+`scripts/build-app.sh` copies `Resources/Licenses/` (copyright notices and full
+license texts of every bundled library) into the app; Settings › About links to
+them. When MPVKit or GRDB is updated, refresh those files and the list in
+`Sources/MacShow/Views/AboutView.swift`.
 
 ## 3. Auto-update (Sparkle) — not set up yet
 

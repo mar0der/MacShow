@@ -49,6 +49,7 @@ public final class Library {
     @ObservationIgnored private var folderState: Task<Void, Never>?
     @ObservationIgnored private var volumeObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    @ObservationIgnored private var artworkGeneration = 0
 
     /// Settings key: download cover art for albums that have none (default on).
     nonisolated public static let fetchArtworkKey = "fetchMissingArtwork"
@@ -169,9 +170,11 @@ public final class Library {
     }
 
     private func volumesChanged() {
-        let wasOffline = offlineFolders
-        reloadFolders()
         Task {
+            // Compare against the state after any update still in flight.
+            await folderState?.value
+            let wasOffline = offlineFolders
+            reloadFolders()
             await folderState?.value
             for folder in folders where wasOffline.contains(folder.path) && !offlineFolders.contains(folder.path) {
                 enqueue(.scan(folder.path))
@@ -254,10 +257,12 @@ public final class Library {
 
     private func reloadFolders() {
         folders = (try? database.watchedFolders()) ?? []
-        let folders = folders, alreadyAccessed = accessedFolders, database = database
+        let folders = folders, database = database
         let previous = folderState
         folderState = Task { [weak self] in
             await previous?.value
+            // Read after the previous pass, so its bookmark access is counted.
+            guard let alreadyAccessed = self?.accessedFolders else { return }
             let state = await Task.detached(priority: .userInitiated) {
                 // Start sandbox access for bookmarked folders, refreshing stale bookmarks.
                 var accessed: [String] = []
@@ -375,6 +380,7 @@ public final class Library {
     /// each album once (unless the lookup failed, e.g. while offline).
     private func fetchMissingArtwork() {
         guard UserDefaults.standard.object(forKey: Self.fetchArtworkKey) as? Bool ?? true, artworkTask == nil else { return }
+        artworkGeneration = generation
         let tried = (try? database.artworkLookups()) ?? []
         // Only albums with real tags: a title that fell back to the folder name, or
         // "Unknown Artist", would send folder names to Apple.
@@ -416,6 +422,8 @@ public final class Library {
 
     private func artworkLookupsFinished() {
         artworkTask = nil
+        // Albums indexed while this run was going (e.g. a scan's last batch) get their turn.
+        if generation != artworkGeneration { fetchMissingArtwork() }
     }
 
     // MARK: Video stills

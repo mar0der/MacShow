@@ -18,19 +18,24 @@ struct MacShowApp: App {
         let player = Player()
         player.nowPlaying = NowPlaying(player: player, artwork: library.artwork)
         player.library = library
-        AppDelegate.player = player
         _library = State(initialValue: library)
         _player = State(initialValue: player)
+        // At launch, not when a window appears: the app can be opened for a file
+        // from Finder without its main window.
+        library.start()
     }
 
     var body: some Scene {
         Window("MacShow", id: "main") {
             RootView()
+                .opensVideoWindow()  // inside the .environment calls, so it can read the player
+                // "Open With MacShow" / files dropped on the Dock icon. SwiftUI delivers
+                // these here (not to the app delegate), one URL at a time.
+                .onOpenURL { url in player.openExternal(url) }
                 .environment(library)
                 .environment(player)
                 .preferredColorScheme(.dark)
                 .onAppear {
-                    library.start()
                     // `MacShow <file>` plays that file on launch.
                     if let path = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") && FileManager.default.fileExists(atPath: $0) }) {
                         player.open(URL(fileURLWithPath: path))
@@ -67,6 +72,7 @@ struct MacShowApp: App {
 
         Window("Mini Player", id: "mini") {
             MiniPlayerView()
+                .opensVideoWindow()
                 .environment(library)
                 .environment(player)
                 .preferredColorScheme(.dark)
@@ -104,6 +110,25 @@ extension Scene {
     }
 }
 
+extension View {
+    /// Opens the video window when a video starts, from whichever MacShow window is open.
+    func opensVideoWindow() -> some View { modifier(VideoWindowOpener()) }
+}
+
+private struct VideoWindowOpener: ViewModifier {
+    @Environment(Player.self) private var player
+    @Environment(\.openWindow) private var openWindow
+
+    func body(content: Content) -> some View {
+        content
+            // A file opened from Finder can start before any window exists.
+            .onAppear { if player.isVideo { openWindow(id: "video") } }
+            .onChange(of: player.isVideo) { _, isVideo in
+                if isVideo { openWindow(id: "video") }
+            }
+    }
+}
+
 /// Menu items can't read `openWindow` from the environment directly.
 private struct OpenWindowButton: View {
     let title: String
@@ -116,15 +141,6 @@ private struct OpenWindowButton: View {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// Set by the app, so files opened from Finder can be played.
-    @MainActor static weak var player: Player?
-
-    /// "Open With MacShow" / dropping files on the Dock icon.
-    func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-        MainActor.assumeIsolated { Self.player?.open(url) }
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Needed when launched as a bare executable (swift run) rather than an .app bundle.
         NSApp.setActivationPolicy(.regular)

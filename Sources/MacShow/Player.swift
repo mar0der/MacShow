@@ -37,6 +37,7 @@ final class Player {
     @ObservationIgnored private var lastSavedSecond = -1
     /// The item whose file mpv has loaded (positions are saved against it).
     @ObservationIgnored private var loadedItem: MediaItem?
+    @ObservationIgnored private var lastExternalOpen = Date.distantPast
     /// Bumped when mpv's track list or track selection changes, so menus refresh.
     private(set) var tracksVersion = 0
 
@@ -60,12 +61,11 @@ final class Player {
     @ObservationIgnored private var sleepTask: Task<Void, Never>?
     /// Where "end of chapter" pauses (seconds into the file).
     @ObservationIgnored private var sleepChapterEnd: Double?
-    /// Set when you seek or skip, so "end of chapter" moves to the chapter you're
-    /// in now. Re-targeted on the first position after mpv lands (its position
-    /// update arrives after the restart event), or after 1.5 s if no restart comes.
-    @ObservationIgnored private var sleepNeedsRetarget = false
-    @ObservationIgnored private var sleepRetargetReady = false
-    @ObservationIgnored private var sleepMoveTime = Date.distantPast
+    /// Set when you switch files, so "end of chapter" re-targets on the new
+    /// file's first position. (Seeks within a file re-target straight away,
+    /// from where they're going.)
+    @ObservationIgnored private var sleepRetargetOnLoad = false
+    @ObservationIgnored private var sleepRetargetFrom: String?
     /// Where each queued file should start (resume points, or a chapter or
     /// bookmark you picked), read by mpv's on_load hook on the event thread.
     @ObservationIgnored nonisolated private let startTimes = StartTimes()
@@ -99,7 +99,10 @@ final class Player {
             ("audio-display", "no"),            // the UI shows cover art itself
             ("gapless-audio", "yes"), ("replaygain", "album"), ("replaygain-fallback", "0"),
             ("input-default-bindings", "no"), ("osc", "no"), ("idle", "yes"),
-            ("load-scripts", "no"), ("config", "no"),  // no Lua scripts, no ~/.config/mpv
+            // No Lua at all: no user scripts, no config, none of mpv's built-in scripts.
+            ("load-scripts", "no"), ("config", "no"), ("load-stats-overlay", "no"), ("load-console", "no"),
+            ("load-auto-profiles", "no"), ("load-select", "no"), ("load-commands", "no"),
+            ("load-context-menu", "no"), ("load-positioning", "no"),
         ] {
             mpv_set_option_string(mpv, name, value)
         }
@@ -200,8 +203,9 @@ final class Player {
 
     /// Next chapter within the file, or the next file of a folder book.
     func nextChapter() {
-        if let chapter = chapterIndex, chapter + 1 < chapters().count {
-            userMoved()
+        let list = chapters()
+        if let chapter = chapterIndex, chapter + 1 < list.count {
+            retargetSleep(at: list[chapter + 1].start)
             command("add", "chapter", "1")
         } else {
             next()
@@ -215,10 +219,10 @@ final class Player {
         if position - list[chapter].start > 3 || chapter == 0 && queueIndex.map({ $0 == 0 }) ?? true {
             seek(to: list[chapter].start)
         } else if chapter > 0 {
-            userMoved()
+            retargetSleep(at: list[chapter - 1].start)
             command("add", "chapter", "-1")
         } else {
-            userMoved()
+            fileChanging()
             command("playlist-prev")
         }
     }
@@ -226,7 +230,7 @@ final class Player {
     private func armSleepTimer() {
         sleepTask?.cancel()
         sleepChapterEnd = nil
-        sleepNeedsRetarget = false
+        sleepRetargetOnLoad = false
         switch sleepTimer {
         case .off:
             break
@@ -250,13 +254,17 @@ final class Player {
         return list[current + 1].start
     }
 
-    /// Marks a move you made (seek, skip, chapter or track change) so "end of
-    /// chapter" re-targets once mpv has landed.
-    private func userMoved() {
+    /// "End of chapter" follows you: after a seek it pauses at the end of the
+    /// chapter you jumped into.
+    private func retargetSleep(at time: Double) {
+        if sleepTimer == .endOfChapter { sleepChapterEnd = chapterEnd(at: time) }
+    }
+
+    /// Switching files: re-target once the new file reports its position.
+    private func fileChanging() {
         guard sleepTimer == .endOfChapter else { return }
-        sleepNeedsRetarget = true
-        sleepRetargetReady = false
-        sleepMoveTime = Date()
+        sleepRetargetOnLoad = true
+        sleepRetargetFrom = loadedItem?.path
     }
 
     /// mpv sets up its video output when a file loads; if the video window
@@ -294,25 +302,37 @@ final class Player {
 
     /// Plays a file that isn't in the library (File › Open, or a launch argument).
     func open(_ url: URL) {
+        savePosition()
         command("stop")
         queue = []
         queueIndex = nil
         command("loadfile", url.path)
     }
 
+    /// A file opened from Finder. Finder hands over several files one by one,
+    /// so files arriving within a second of each other queue up after the first.
+    func openExternal(_ url: URL) {
+        if Date().timeIntervalSince(lastExternalOpen) < 1 {
+            command("loadfile", url.path, "append")
+        } else {
+            open(url)
+        }
+        lastExternalOpen = Date()
+    }
+
     func togglePause() { command("cycle", "pause") }
     func seek(to seconds: Double) {
-        userMoved()
+        retargetSleep(at: seconds)
         command("seek", String(seconds), "absolute")
     }
 
     func skip(_ seconds: Double) {
-        userMoved()
+        retargetSleep(at: position + seconds)
         command("seek", String(seconds), "relative")
     }
 
     func next() {
-        userMoved()
+        fileChanging()
         command("playlist-next")
     }
 
@@ -321,13 +341,13 @@ final class Player {
         if position > 3 {
             seek(to: 0)
         } else {
-            userMoved()
+            fileChanging()
             command("playlist-prev")
         }
     }
 
     func playQueueItem(at index: Int) {
-        userMoved()
+        fileChanging()
         command("playlist-play-index", String(index))
     }
 
@@ -467,7 +487,6 @@ final class Player {
             case MPV_EVENT_PLAYBACK_RESTART:  // after a seek or a new file starts
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
-                        if self.sleepNeedsRetarget { self.sleepRetargetReady = true }
                         self.nowPlaying?.update()
                     }
                 }
@@ -503,11 +522,11 @@ final class Player {
                 lastSavedSecond = bucket
                 savePosition(publish: false)
             }
-            if sleepNeedsRetarget, sleepRetargetReady || Date().timeIntervalSince(sleepMoveTime) > 1.5 {
-                sleepNeedsRetarget = false
+            if sleepRetargetOnLoad, let loaded = loadedItem, loaded.path != sleepRetargetFrom {
+                sleepRetargetOnLoad = false
                 sleepChapterEnd = chapterEnd(at: position)
             }
-            if sleepTimer == .endOfChapter, !sleepNeedsRetarget, let end = sleepChapterEnd, end < duration - 1, position >= end - 0.3 {
+            if sleepTimer == .endOfChapter, !sleepRetargetOnLoad, let end = sleepChapterEnd, end < duration - 1, position >= end - 0.3 {
                 if !isPaused { togglePause() }
                 sleepTimer = .off
             }
