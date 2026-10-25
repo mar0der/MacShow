@@ -80,6 +80,30 @@ struct VideoTests {
     }
 
     @MainActor
+    @Test func findsAPersonsTitlesInTheLibrary() async throws {
+        let database = try LibraryDatabase.inMemory()
+        let tag = UUID().uuidString
+        try database.upsert([
+            makeItem("/m/iron-\(tag).mkv", kind: .movie, title: "Iron Man", year: 2008),
+            makeItem("/m/iron-remake-\(tag).mkv", kind: .movie, title: "Iron Man", year: 2030),
+            makeItem("/m/chaplin-\(tag).mkv", kind: .movie, title: "Chaplin"),
+            makeItem("/tv/ally-\(tag).mkv", kind: .episode, show: "Ally McBeal", season: 1, episode: 1),
+        ].map { var item = $0; item.duration = 6000; return item })
+        let library = Library(database: database, artwork: ArtworkStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("art-\(UUID())")))
+        for _ in 0..<50 where library.index.shows.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        let credits = [
+            PersonProfile.Credit(title: "Iron Man", isShow: false, year: 2008),
+            PersonProfile.Credit(title: "Chaplin", isShow: false, year: 1992),
+            PersonProfile.Credit(title: "Ally McBeal", isShow: true, year: 1997),
+            PersonProfile.Credit(title: "Oppenheimer", isShow: false, year: 2023),
+        ]
+        let found = library.titles(in: PersonProfile(name: "R", credits: credits))
+        // The 2030 "Iron Man" is another film; Chaplin without a year still counts.
+        #expect(Set(found.movies.map(\.path)) == ["/m/iron-\(tag).mkv", "/m/chaplin-\(tag).mkv"])
+        #expect(found.shows.map(\.title) == ["Ally McBeal"])
+    }
+
+    @MainActor
     @Test func removedBooksLeaveJumpBackInUntilPlayedAgain() async throws {
         let database = try LibraryDatabase.inMemory()
         try database.upsert([makeItem("/books/b-\(UUID()).m4b", kind: .audiobook, album: "A Book")])
@@ -157,6 +181,22 @@ struct MediaDetailsTests {
         let yellowstone = try #require(ArtworkFetcher.mediaDetails(from: Data(show.utf8)))
         #expect(yellowstone.seasons == 5 && yellowstone.makers == ["Taylor Sheridan"])
         #expect(yellowstone.rating == nil && yellowstone.overview == nil && yellowstone.runtimeMinutes == nil)
+    }
+
+    @Test func readsPersonProfiles() throws {
+        let movie = #"{"title":"Iron Man","credits":{"cast":[{"id":3223,"name":"Robert Downey Jr.","character":"Tony Stark"}]}}"#
+        #expect(try #require(ArtworkFetcher.mediaDetails(from: Data(movie.utf8))).cast.first?.id == 3223)
+
+        let person = #"{"name":"Robert Downey Jr.","biography":"An actor.","birthday":"1965-04-04","place_of_birth":"New York City","known_for_department":"Acting","profile_path":"/p.jpg","combined_credits":{"cast":[{"media_type":"movie","title":"Iron Man","character":"Tony Stark","release_date":"2008-04-30","poster_path":"/i.jpg","vote_count":25000},{"media_type":"tv","name":"Ally McBeal","character":"Larry Paul","first_air_date":"1997-09-08","vote_count":900},{"media_type":"movie","title":"Iron Man","character":"Tony Stark (uncredited)","release_date":"2008-04-30","vote_count":25000},{"media_type":"movie","title":"Chaplin","release_date":"","vote_count":1200}]}}"#
+        let profile = try #require(ArtworkFetcher.personProfile(from: Data(person.utf8)))
+        #expect(profile.name == "Robert Downey Jr." && profile.biography == "An actor." && profile.knownFor == "Acting")
+        #expect(profile.birthday == "1965-04-04" && profile.placeOfBirth == "New York City")
+        #expect(profile.photo?.absoluteString == "https://image.tmdb.org/t/p/w500/p.jpg")
+        // Most-voted first, each title once.
+        #expect(profile.credits.map(\.title) == ["Iron Man", "Chaplin", "Ally McBeal"])
+        #expect(profile.credits[0].isShow == false && profile.credits[0].year == 2008 && profile.credits[0].role == "Tony Stark")
+        #expect(profile.credits[0].poster?.absoluteString == "https://image.tmdb.org/t/p/w342/i.jpg")
+        #expect(profile.credits[1].year == nil && profile.credits[2].isShow == true)
     }
 
     @Test func readsSeasonEpisodes() throws {

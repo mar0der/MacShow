@@ -489,12 +489,42 @@ public final class Library {
         let isShow = item.kind == .episode
         let key = isShow ? "tv:" + Show.id(for: item) : "movie:\(item.title.lowercased()):\(item.year ?? 0)"
         let database = database
-        if let cached = try? database.cachedDetails(key) { return cached }
+        // Details cached before cast members carried their TMDB id are fetched again once.
+        if let cached = try? database.cachedDetails(key), cached.cast.first.map({ $0.id != nil }) ?? true { return cached }
         let fetcher = ArtworkFetcher(tmdbKey: UserDefaults.standard.string(forKey: ArtworkFetcher.tmdbKeyDefault))
         let found = isShow ? await fetcher.showDetails(name: item.show ?? item.title)
                            : await fetcher.movieDetails(title: item.title, year: item.year)
         if let found { try? database.cacheDetails(found, key: key) }
         return found
+    }
+
+    /// An actor's or director's TMDB profile (by the id from a cast list), looked up once.
+    public func profile(ofPerson id: Int) async -> PersonProfile? {
+        let key = "person:\(id)"
+        let database = database
+        if let cached = try? database.cachedDetails(key, as: PersonProfile.self) { return cached }
+        let fetcher = ArtworkFetcher(tmdbKey: UserDefaults.standard.string(forKey: ArtworkFetcher.tmdbKeyDefault))
+        let found = await fetcher.personProfile(id: id)
+        if let found { try? database.cacheDetails(found, key: key) }
+        return found
+    }
+
+    /// The movies and shows in this library that are among someone's credits:
+    /// same title, and for movies the same year (give or take one) when both are known.
+    public func titles(in profile: PersonProfile) -> (movies: [MediaItem], shows: [Show]) {
+        func normalized(_ title: String) -> String { title.lowercased().filter { $0.isLetter || $0.isNumber } }
+        var movieYears: [String: [Int?]] = [:]
+        var shows = Set<String>()
+        for credit in profile.credits {
+            if credit.isShow { shows.insert(normalized(credit.title)) } else { movieYears[normalized(credit.title), default: []].append(credit.year) }
+        }
+        let movies = index.movies.filter { movie in
+            (movieYears[normalized(movie.title)] ?? []).contains { year in
+                guard let year, let own = movie.year else { return true }
+                return abs(year - own) <= 1
+            }
+        }
+        return (movies, index.shows.filter { shows.contains(normalized($0.title)) })
     }
 
     /// A season's episode titles, summaries and stills from TMDB, looked up once.

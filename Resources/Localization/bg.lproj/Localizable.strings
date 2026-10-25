@@ -361,3 +361,10 @@
 "%lld seasons" = "%lld сезона";
 "Episode %lld" = "Епизод %lld";
 "Episodes" = "Епизоди";
+"%@ in %@" = "%1$@ в %2$@";
+"Born %@" = "Роден(а) на %@";
+"Died %@" = "Почина на %@";
+"From TMDB" = "От TMDB";
+"In Your Library" = "Във вашата библиотека";
+"Known For" = "Известен(на) с";
+"See %@'s profile" = "Профил на %@";

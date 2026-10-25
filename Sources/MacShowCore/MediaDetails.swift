@@ -4,6 +4,8 @@ import GRDB
 /// What TMDB knows about a movie or show: shown on its page.
 public struct MediaDetails: Codable, Hashable, Sendable {
     public struct Person: Codable, Hashable, Sendable {
+        /// TMDB's id, for their profile.
+        public var id: Int?
         public var name: String
         public var role: String?
         public var photo: URL?
@@ -80,7 +82,7 @@ extension ArtworkFetcher {
 
     static func mediaDetails(from data: Data) -> MediaDetails? {
         struct Named: Decodable { var name: String }
-        struct CastMember: Decodable { var name: String; var character: String?; var profile_path: String? }
+        struct CastMember: Decodable { var id: Int?; var name: String; var character: String?; var profile_path: String? }
         struct CrewMember: Decodable { var name: String; var job: String? }
         struct Credits: Decodable { var cast: [CastMember]?; var crew: [CrewMember]? }
         struct Response: Decodable {
@@ -115,7 +117,7 @@ extension ArtworkFetcher {
             genres: (response.genres ?? []).map(\.name),
             makers: response.created_by.map { $0.map(\.name) } ?? directors,
             cast: (response.credits?.cast ?? []).prefix(12).map { member in
-                MediaDetails.Person(name: member.name, role: text(member.character),
+                MediaDetails.Person(id: member.id, name: member.name, role: text(member.character),
                                     photo: member.profile_path.flatMap { URL(string: image + "w185" + $0) })
             },
             backdrop: response.backdrop_path.flatMap { URL(string: image + "w1280" + $0) },
@@ -202,14 +204,80 @@ extension ArtworkFetcher {
     }
 }
 
-extension LibraryDatabase {
-    func cachedDetails(_ key: String) throws -> MediaDetails? {
-        try writer.read { db in
-            try Data.fetchOne(db, sql: "SELECT json FROM mediaDetails WHERE key = ?", arguments: [key])
-        }.flatMap { try? JSONDecoder().decode(MediaDetails.self, from: $0) }
+/// An actor's or director's TMDB profile, shown on their page.
+public struct PersonProfile: Codable, Hashable, Sendable {
+    public struct Credit: Codable, Hashable, Sendable {
+        public var title: String
+        public var isShow: Bool
+        public var role: String?
+        public var year: Int?
+        public var poster: URL?
     }
 
-    func cacheDetails(_ details: MediaDetails, key: String) throws {
+    public var name: String
+    public var biography: String?
+    /// "1965-04-04"
+    public var birthday: String?
+    public var deathday: String?
+    public var placeOfBirth: String?
+    /// "Acting", "Directing"…
+    public var knownFor: String?
+    public var photo: URL?
+    /// Their movies and shows, best known first.
+    public var credits: [Credit]
+}
+
+extension ArtworkFetcher {
+    public func personProfile(id: Int) async -> PersonProfile? {
+        guard let tmdbKey else { return nil }
+        var detail = URLComponents(string: "https://api.themoviedb.org/3/person/\(id)")!
+        detail.queryItems = [.init(name: "api_key", value: tmdbKey), .init(name: "append_to_response", value: "combined_credits")]
+        guard let url = detail.url, let (body, reply) = try? await session.data(from: url), (reply as? HTTPURLResponse)?.statusCode == 200
+        else { return nil }
+        return Self.personProfile(from: body)
+    }
+
+    static func personProfile(from data: Data) -> PersonProfile? {
+        struct Credit: Decodable {
+            var media_type: String?; var title: String?; var name: String?; var character: String?
+            var release_date: String?; var first_air_date: String?; var poster_path: String?; var vote_count: Int?
+        }
+        struct Credits: Decodable { var cast: [Credit]? }
+        struct Response: Decodable {
+            var name: String; var biography: String?; var birthday: String?; var deathday: String?
+            var place_of_birth: String?; var known_for_department: String?; var profile_path: String?
+            var combined_credits: Credits?
+        }
+        guard let response = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
+        func text(_ value: String?) -> String? { value.flatMap { $0.isEmpty ? nil : $0 } }
+        var seen = Set<String>()
+        let credits = (response.combined_credits?.cast ?? [])
+            .sorted { ($0.vote_count ?? 0) > ($1.vote_count ?? 0) }
+            .compactMap { credit -> PersonProfile.Credit? in
+                let isShow = credit.media_type == "tv"
+                guard let title = text(credit.title ?? credit.name), seen.insert("\(isShow):\(title)").inserted else { return nil }
+                return PersonProfile.Credit(
+                    title: title, isShow: isShow, role: text(credit.character),
+                    year: text(credit.release_date ?? credit.first_air_date).flatMap { Int($0.prefix(4)) },
+                    poster: credit.poster_path.flatMap { URL(string: "https://image.tmdb.org/t/p/w342" + $0) })
+            }
+        return PersonProfile(
+            name: response.name, biography: text(response.biography), birthday: text(response.birthday),
+            deathday: text(response.deathday), placeOfBirth: text(response.place_of_birth),
+            knownFor: text(response.known_for_department),
+            photo: response.profile_path.flatMap { URL(string: "https://image.tmdb.org/t/p/w500" + $0) },
+            credits: credits)
+    }
+}
+
+extension LibraryDatabase {
+    func cachedDetails<Details: Decodable>(_ key: String, as type: Details.Type = MediaDetails.self) throws -> Details? {
+        try writer.read { db in
+            try Data.fetchOne(db, sql: "SELECT json FROM mediaDetails WHERE key = ?", arguments: [key])
+        }.flatMap { try? JSONDecoder().decode(Details.self, from: $0) }
+    }
+
+    func cacheDetails(_ details: some Encodable, key: String) throws {
         let json = try JSONEncoder().encode(details)
         try writer.write { db in
             try db.execute(sql: "INSERT OR REPLACE INTO mediaDetails (key, json, fetchedAt) VALUES (?, ?, ?)", arguments: [key, json, Date()])

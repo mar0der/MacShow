@@ -86,7 +86,7 @@ struct MovieDetailView: View {
     }
 }
 
-/// The people in a movie or show: photo, name and role.
+/// The people in a movie or show: photo, name and role. Each opens their profile.
 struct CastRow: View {
     let cast: [MediaDetails.Person]
 
@@ -96,19 +96,30 @@ struct CastRow: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 18) {
                     ForEach(cast, id: \.self) { person in
-                        VStack(spacing: 6) {
-                            AsyncImage(url: person.photo) { image in image.resizable().scaledToFill() } placeholder: {
-                                ArtworkView(key: nil, title: person.name, cornerRadius: 100)
-                            }
-                            .frame(width: 84, height: 84)
-                            .clipShape(Circle())
-                            Text(person.name).font(.caption.weight(.semibold)).lineLimit(1)
-                            if let role = person.role { Text(role).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                        if let id = person.id {
+                            NavigationLink(value: PersonRef(id: id, name: person.name)) { face(person) }
+                                .buttonStyle(.plain)
+                                .help("See \(person.name)'s profile")
+                        } else {
+                            face(person)
                         }
-                        .frame(width: 100)
                     }
                 }
             }
         }
+    }
+
+    private func face(_ person: MediaDetails.Person) -> some View {
+        VStack(spacing: 6) {
+            AsyncImage(url: person.photo) { image in image.resizable().scaledToFill() } placeholder: {
+                ArtworkView(key: nil, title: person.name, cornerRadius: 100)
+            }
+            .frame(width: 84, height: 84)
+            .clipShape(Circle())
+            Text(person.name).font(.caption.weight(.semibold)).lineLimit(1)
+            if let role = person.role { Text(role).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+        }
+        .frame(width: 100)
+        .contentShape(Rectangle())
     }
 }

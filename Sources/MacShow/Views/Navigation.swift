@@ -8,6 +8,8 @@ struct ArtistRef: Hashable { let id: String }
 struct ShowRef: Hashable { let id: String }
 struct BookRef: Hashable { let id: String }
 struct MovieRef: Hashable { let id: Int64 }
+/// A TMDB person (from a cast list); the name shows while their profile loads.
+struct PersonRef: Hashable { let id: Int; let name: String }
 
 extension View {
     func libraryDestinations() -> some View {
@@ -25,6 +27,9 @@ extension View {
         }
         .navigationDestination(for: MovieRef.self) { ref in
             MovieDestination(id: ref.id).withPlayerBar()
+        }
+        .navigationDestination(for: PersonRef.self) { ref in
+            PersonView(ref: ref).withPlayerBar()
         }
     }
 }
