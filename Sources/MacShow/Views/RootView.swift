@@ -86,6 +86,24 @@ struct RootView: View {
         }
         // Closing the window stops a video (music keeps playing).
         .onDisappear { if player.isVideo { player.stop() } }
+        .onChange(of: player.isVideoMinimized) { _, minimized in
+            if minimized { showCurrentShow() }
+        }
+    }
+
+    /// Back from an episode lands on its show's page, to pick another one
+    /// (the episode carries on in the corner).
+    private func showCurrentShow() {
+        guard let item = player.currentItem, item.kind == .episode,
+              let show = library.index.shows.first(where: { $0.episodes.contains { $0.id == item.id } })
+        else { return }
+        selection = .shows
+        search = ""
+        // After the selection change has reset the path.
+        DispatchQueue.main.async {
+            path = NavigationPath()
+            path.append(ShowRef(id: show.id))
+        }
     }
 
     private var browser: some View {

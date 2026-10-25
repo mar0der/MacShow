@@ -38,11 +38,13 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
 | ↑ ↓ | Volume (video); ⌘↑ ⌘↓ anywhere |
 | Scroll / two-finger swipe | Volume (over a video) |
 | ⌘← ⌘→ | Previous / next |
+| Click | Show / hide the video controls |
 | F or double-click | Full screen (video) |
+| Right-click | Subtitles, audio track, speed, chapters, Fill Window… (video) |
 | M | Mute (video) |
 | S | Next subtitles (video) |
 | , . | Step a frame back / forward (video) |
-| Esc | Leave full screen, then shrink the video to a corner and keep browsing |
+| Esc | Leave full screen, then back to the library (an episode opens its show) with the video in a corner |
 | ⇧⌘A | Show / hide Adult content |
 
 See the [roadmap](ROADMAP.md) for the plan and what's left.

@@ -1,36 +1,13 @@
 import MacShowCore
 import SwiftUI
 
-/// Subtitle and audio-track choices, plus adding a subtitle file.
+/// The subtitles button in the video controls.
 struct TracksMenu: View {
     @Environment(Player.self) private var player
 
     var body: some View {
-        let subtitles = player.tracks("sub")
-        let audio = player.tracks("audio")
-        Menu {
-            Section("Subtitles") {
-                Toggle("Off", isOn: Binding(get: { !subtitles.contains(where: \.isSelected) }, set: { _ in player.select(nil, type: "sub") }))
-                ForEach(subtitles) { track in
-                    Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "sub") }))
-                }
-                Button("Add Subtitle File…") {
-                    let panel = NSOpenPanel()
-                    panel.allowedContentTypes = []
-                    panel.allowsOtherFileTypes = true
-                    panel.message = "Choose a subtitle file (SRT, ASS, VTT…)"
-                    if panel.runModal() == .OK, let url = panel.url { player.addSubtitleFile(url) }
-                }
-            }
-            if audio.count > 1 {
-                Section("Audio") {
-                    ForEach(audio) { track in
-                        Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "audio") }))
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: subtitles.contains(where: \.isSelected) ? "captions.bubble.fill" : "captions.bubble")
+        Menu { TrackChoices() } label: {
+            Image(systemName: player.tracks("sub").contains(where: \.isSelected) ? "captions.bubble.fill" : "captions.bubble")
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -39,8 +16,81 @@ struct TracksMenu: View {
     }
 }
 
+/// Subtitle and audio-track choices, plus adding a subtitle file.
+struct TrackChoices: View {
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        let subtitles = player.tracks("sub")
+        let audio = player.tracks("audio")
+        Section("Subtitles") {
+            Toggle("Off", isOn: Binding(get: { !subtitles.contains(where: \.isSelected) }, set: { _ in player.select(nil, type: "sub") }))
+            ForEach(subtitles) { track in
+                Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "sub") }))
+            }
+            Button("Add Subtitle File…") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = []
+                panel.allowsOtherFileTypes = true
+                panel.message = "Choose a subtitle file (SRT, ASS, VTT…)"
+                if panel.runModal() == .OK, let url = panel.url { player.addSubtitleFile(url) }
+            }
+        }
+        if audio.count > 1 {
+            Section("Audio") {
+                ForEach(audio) { track in
+                    Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "audio") }))
+                }
+            }
+        }
+    }
+}
+
+/// Right-click on the picture.
+private struct VideoContextMenu: View {
+    @Environment(Player.self) private var player
+    @Environment(\.openWindow) private var openWindow
+    private static let speeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+    var body: some View {
+        Button(player.isPaused ? "Play" : "Pause") { player.togglePause() }
+        Button("Back 10 Seconds") { player.skip(-10) }
+        Button("Forward 10 Seconds") { player.skip(10) }
+        if let index = player.queueIndex, index + 1 < player.queue.count {
+            Button(player.queue[index + 1].kind == .episode ? "Next Episode" : "Next") { player.next() }
+        }
+        Divider()
+        TrackChoices()
+        Divider()
+        let chapters = player.chapters()
+        if chapters.count > 1 {
+            Menu("Chapters") {
+                ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
+                    Toggle("\(chapter.title)  \(Format.time(chapter.start))", isOn: Binding(get: { player.chapterIndex == index }, set: { _ in player.seek(to: chapter.start) }))
+                }
+            }
+        }
+        Menu("Speed") {
+            ForEach(Self.speeds, id: \.self) { speed in
+                Toggle(speed == 1 ? "Normal" : String(format: "%g×", speed), isOn: Binding(get: { player.speed == speed }, set: { _ in player.setSpeed(speed) }))
+            }
+        }
+        @Bindable var player = player
+        Toggle("Fill Window (Crop Black Bars)", isOn: $player.fillsWindow)
+        Divider()
+        Button(VideoScreen.isFullScreen ? "Exit Full Screen" : "Enter Full Screen") { VideoScreen.toggleFullScreen() }
+        Button("Back to Library") { player.isVideoMinimized = true }
+        if let item = player.currentItem {
+            Divider()
+            if let id = item.id { Button("Get Info…") { openWindow(id: "info", value: [id]) } }
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
+        }
+    }
+}
+
 /// A playing video, filling the main window: the picture, with controls that
-/// fade in when the mouse moves. Click to pause, double-click for full screen.
+/// fade in when the mouse moves. Click shows or hides the controls (Space
+/// pauses), double-click goes full screen, right-click has tracks and more.
 struct VideoPlayerView: View {
     @Environment(Player.self) private var player
     @State private var controlsVisible = true
@@ -48,6 +98,9 @@ struct VideoPlayerView: View {
     @State private var isFullScreen = false
     /// The episode whose Up Next card was closed.
     @State private var dismissedUpNext: String?
+    /// Where the pointer last was on screen: the picture moving under a still
+    /// pointer (going full screen) mustn't count as the mouse moving.
+    @State private var lastPointer = NSEvent.mouseLocation
 
     var body: some View {
         @Bindable var player = player
@@ -60,8 +113,12 @@ struct VideoPlayerView: View {
             // Catches clicks on the picture (the Metal view itself doesn't).
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) { VideoScreen.toggleFullScreen() }
-                .onTapGesture { player.togglePause(); showControls() }
+                .onTapGesture(count: 2) {
+                    VideoScreen.toggleFullScreen()
+                    hideControls()
+                }
+                .onTapGesture { controlsVisible ? hideControls() : showControls() }
+                .contextMenu { VideoContextMenu() }
 
             VStack {
                 HStack(spacing: 12) {
@@ -69,7 +126,7 @@ struct VideoPlayerView: View {
                         Image(systemName: "chevron.left").font(.title3.weight(.semibold))
                     }
                     .buttonStyle(.borderless)
-                    .help("Back to Library, Keep Playing (Esc)")
+                    .help(player.currentItem?.show.map { "Back to \($0), Keep Playing (Esc)" } ?? "Back to Library, Keep Playing (Esc)")
                     VStack(alignment: .leading, spacing: 1) {
                         Text(player.currentItem?.title ?? player.title).font(.headline)
                         if let item = player.currentItem, item.kind == .episode, let show = item.show {
@@ -166,7 +223,12 @@ struct VideoPlayerView: View {
         .background(.black)
         .ignoresSafeArea()
         .hidingWindowTitle()
-        .onContinuousHover { _ in showControls() }
+        .onContinuousHover { _ in
+            let pointer = NSEvent.mouseLocation
+            guard abs(pointer.x - lastPointer.x) + abs(pointer.y - lastPointer.y) > 2 else { return }
+            lastPointer = pointer
+            showControls()
+        }
         .onReceive(NotificationCenter.default.publisher(for: VideoScreen.activity)) { _ in showControls() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in isFullScreen = VideoScreen.isFullScreen }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in isFullScreen = VideoScreen.isFullScreen }
@@ -193,6 +255,12 @@ struct VideoPlayerView: View {
     private var isIntro: Bool {
         guard let title = player.chapterTitle?.lowercased(), let chapter = player.chapterIndex else { return false }
         return (title.contains("intro") || title.contains("opening")) && chapter + 1 < player.chapters().count
+    }
+
+    private func hideControls() {
+        hideTask?.cancel()
+        controlsVisible = false
+        NSCursor.setHiddenUntilMouseMoves(true)
     }
 
     /// Shows the controls and hides them (and the pointer) again after three idle seconds while playing.

@@ -31,6 +31,8 @@ final class Player {
         }
     }
     var isMuted = false { didSet { setFlag("mute", isMuted) } }
+    /// Zooms the picture to fill the window, cropping black bars (or the picture's edges).
+    var fillsWindow = false { didSet { setDouble("panscan", fillsWindow ? 1 : 0) } }
     /// Bit-perfect output: mpv takes the audio device for itself and switches
     /// it to each file's sample rate, instead of macOS resampling everything to
     /// the rate set in Audio MIDI Setup. Other apps are silent meanwhile.
