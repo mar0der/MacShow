@@ -146,6 +146,33 @@ struct ContentSettings: View {
                 Text("Personal: videos show under Home Videos. Adult: kept out of Home, search and every list; shown in their own section after Touch ID (View › Show Adult Content, ⇧⌘A), and hidden again at every launch. Never Scan: not in the library at all.")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            let locked = library.index.itemsByID.values.filter(\.isProtected).sorted { $0.path < $1.path }
+            Section {
+                if locked.isEmpty {
+                    Label("None. Everything in your library plays.", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                }
+                ForEach(locked) { item in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title).lineLimit(1)
+                            Text(item.path.replacingOccurrences(of: Library.realHomeDirectory.path, with: "~"))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        }
+                        Spacer()
+                        Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: { Image(systemName: "magnifyingglass") }
+                            .buttonStyle(.borderless)
+                            .help("Show in Finder")
+                    }
+                }
+                if !locked.isEmpty {
+                    Button("Hide These from the Library") { locked.forEach { library.setRule(.excluded, for: $0.url) } }
+                }
+            } header: {
+                Text("Copy-Protected Files (\(locked.count))")
+            } footer: {
+                Text("These are locked to Apple's apps with DRM: old iTunes Store movies and TV shows, Audible books, songs saved from an Apple Music subscription. No other player can open them. What you bought is a licence that the store can withdraw, so where you can, download a DRM-free copy (iTunes music purchases since 2009 are DRM-free) and keep it in a watched folder.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .formStyle(.grouped)
     }
