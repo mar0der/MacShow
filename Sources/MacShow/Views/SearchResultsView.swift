@@ -28,7 +28,7 @@ struct SearchResultsView: View {
                                 ForEach(artists.prefix(20)) { artist in
                                     NavigationLink(value: ArtistRef(id: artist.id)) {
                                         VStack {
-                                            ArtworkView(key: artist.artworkKey, title: artist.name, cornerRadius: 70).frame(width: 120)
+                                            ArtworkView(key: library.picture(of: artist), title: artist.name, cornerRadius: 70).frame(width: 120)
                                             Text(artist.name).font(.callout.weight(.semibold)).lineLimit(1)
                                         }
                                         .frame(width: 130)

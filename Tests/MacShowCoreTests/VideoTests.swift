@@ -79,3 +79,52 @@ struct VideoTests {
         #expect(library.continueWatching.map(\.path) == [film.path])
     }
 }
+
+struct SubtitleFinderTests {
+    @Test func findsSubtitlesBesideAndInSubsFolders() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Subs-\(UUID())")
+        let subs = folder.appendingPathComponent("Subs/My.Show.S02E05")
+        try FileManager.default.createDirectory(at: subs, withIntermediateDirectories: true)
+        for file in ["My.Show.S02E05.mkv", "My.Show.S02E05.en.srt", "My.Show.S02E05.srt", "Other.Movie.srt", "notes.txt", "readme.nfo"] {
+            try Data().write(to: folder.appendingPathComponent(file))
+        }
+        try Data().write(to: subs.appendingPathComponent("2_English.srt"))
+
+        let found = SubtitleFinder.candidates(for: folder.appendingPathComponent("My.Show.S02E05.mkv")).map(\.lastPathComponent)
+        #expect(Array(found.prefix(2)) == ["My.Show.S02E05.srt", "My.Show.S02E05.en.srt"])
+        #expect(Set(found) == ["My.Show.S02E05.srt", "My.Show.S02E05.en.srt", "Other.Movie.srt", "2_English.srt"])
+    }
+}
+
+struct ShowMarkerTests {
+    @MainActor
+    @Test func marksAndNextShow() async throws {
+        let database = try LibraryDatabase.inMemory()
+        let tag = UUID().uuidString
+        try database.upsert([
+            makeItem("/tv/a1.mkv", kind: .episode, show: "A \(tag)", season: 1, episode: 1),
+            makeItem("/tv/b1.mkv", kind: .episode, show: "B \(tag)", season: 1, episode: 1),
+            makeItem("/tv/b2.mkv", kind: .episode, show: "B \(tag)", season: 1, episode: 2),
+        ].map { var item = $0; item.duration = 3000; return item })
+        let library = Library(database: database, artwork: ArtworkStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("art-\(UUID())")))
+        for _ in 0..<50 where library.index.shows.count < 2 { try await Task.sleep(for: .milliseconds(20)) }
+        let byPath = Dictionary(uniqueKeysWithValues: library.index.itemsByID.values.map { ($0.path, $0) })
+        let a1 = try #require(byPath["/tv/a1.mkv"]), b1 = try #require(byPath["/tv/b1.mkv"])
+
+        library.setRecapEnd(95, for: a1)
+        library.setCreditsStart(2940, duration: 3000, for: a1)
+        #expect(library.markers(for: a1)?.recapEnd == 95)
+        #expect(library.markers(for: a1)?.creditsLength == 60)
+        #expect(library.markers(for: b1) == nil)
+
+        // After show A: the first unwatched episode of B.
+        #expect(library.nextShow(after: Show.id(for: a1))?.path == "/tv/b1.mkv")
+        // B partly watched: pick it up where it was.
+        library.savePosition(3000, duration: 3000, for: b1)
+        #expect(library.nextShow(after: Show.id(for: a1))?.path == "/tv/b2.mkv")
+
+        library.setRecapEnd(nil, for: a1)
+        library.setCreditsStart(nil, duration: 3000, for: a1)
+        #expect(library.markers(for: a1) == nil)
+    }
+}

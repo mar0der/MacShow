@@ -22,6 +22,8 @@ public final class Library {
     public private(set) var isScanning = false
     /// Goes up each time `index` is replaced; cheap to watch for "the library changed".
     public private(set) var generation = 0
+    /// Details changed with Get Info, by path (already applied to `index`).
+    public private(set) var edits: [String: ItemEdit] = [:]
     /// Folders and files marked Never Scan, Personal or Adult.
     public private(set) var folderRules: [FolderRule] = []
     /// Whether items in Adult folders are listed (in their own section). Off at
@@ -56,6 +58,12 @@ public final class Library {
     @ObservationIgnored private var folderState: Task<Void, Never>?
     @ObservationIgnored private var volumeObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    /// Network folders we've tried to reconnect since the last rescan.
+    @ObservationIgnored private var reconnectTried: Set<String> = []
+    @ObservationIgnored private var networkRescan: Task<Void, Never>?
+    /// How often folders on network shares are rescanned: macOS doesn't report
+    /// changes another computer makes there.
+    nonisolated static let networkRescanInterval: Duration = .seconds(15 * 60)
     @ObservationIgnored private var artworkGeneration = 0
 
     /// Settings key: download cover art for albums that have none (default on).
@@ -94,7 +102,11 @@ public final class Library {
         positions = (try? database.writer.read(LibraryDatabase.positions)) ?? [:]
         bookmarks = (try? database.bookmarks()) ?? []
         folderRules = (try? database.folderRules()) ?? []
-        changes = DatabaseRegionObservation(tracking: Table("mediaItem"), Table("playlist"), Table("playlistEntry"))
+        artistImages = (try? database.writer.read { db in
+            Dictionary(try Row.fetchAll(db, sql: "SELECT artistId, artworkKey FROM artistImage").map { ($0["artistId"], $0["artworkKey"]) },
+                       uniquingKeysWith: { _, last in last })
+        }) ?? [:]
+        changes = DatabaseRegionObservation(tracking: Table("mediaItem"), Table("playlist"), Table("playlistEntry"), Table("itemEdit"))
             .publisher(in: database.writer)
             .map { _ in () }
             .catch { _ in Empty() }
@@ -124,18 +136,22 @@ public final class Library {
         refreshRunning = true
         let database = database, rules = FolderRules(folderRules), showingAdult = showingAdult
         refreshQueue.async { [weak self] in
-            let snapshot = try? database.writer.read { db -> (LibraryIndex, [PlaylistContents]) in
-                let items = try MediaItem.fetchAll(db)
+            let snapshot = try? database.writer.read { db -> (LibraryIndex, [PlaylistContents], [String: ItemEdit]) in
+                let edits = try LibraryDatabase.itemEdits(db)
+                let items = try MediaItem.fetchAll(db).map { item in edits[item.path]?.apply(to: item) ?? item }
                 // Playlists keep every copy of a duplicate song, but never adult items.
                 let listed = items.filter { rules.kind(for: $0.path).map { $0 == .personal } ?? true }
                 let byID = Dictionary(uniqueKeysWithValues: listed.compactMap { item in item.id.map { ($0, item) } })
-                return (LibraryIndex(items: items, rules: rules, showingAdult: showingAdult), try LibraryDatabase.playlistContents(db, items: byID))
+                let chosenKinds = Set(edits.values.filter { $0.kind != nil }.map(\.path))
+                return (LibraryIndex(items: items, rules: rules, showingAdult: showingAdult, chosenKinds: chosenKinds),
+                        try LibraryDatabase.playlistContents(db, items: byID), edits)
             }
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let snapshot {
                     self.index = snapshot.0
                     self.playlists = snapshot.1
+                    self.edits = snapshot.2
                     self.generation += 1
                     if !self.isScanning { self.fetchMissingArtwork() }
                 }
@@ -177,6 +193,33 @@ public final class Library {
                 MainActor.assumeIsolated { self?.volumesChanged() }
             })
         }
+        networkRescan = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.networkRescanInterval)
+                self?.rescanNetworkFolders()
+            }
+        }
+    }
+
+    /// Rescans the network folders that are connected, and tries again to
+    /// reconnect the ones that aren't.
+    private func rescanNetworkFolders() {
+        reconnectTried.removeAll()
+        for folder in folders where folder.isOnNetworkShare && !offlineFolders.contains(folder.path) {
+            enqueue(.scan(folder.path))
+        }
+        reloadFolders()
+    }
+
+    /// Reconnects a network folder's share using its bookmark, quietly: with the
+    /// password in the Keychain it mounts; otherwise nothing happens (Settings
+    /// has a Connect button). Mounting is noticed like a drive being plugged in.
+    private func reconnect(_ folder: WatchedFolder) {
+        guard let bookmark = folder.bookmark else { return }
+        Task.detached(priority: .utility) {
+            var stale = false
+            _ = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope, .withoutUI], relativeTo: nil, bookmarkDataIsStale: &stale)
+        }
     }
 
     private func volumesChanged() {
@@ -207,6 +250,7 @@ public final class Library {
     }
 
     public func rescanAll() {
+        reconnectTried.removeAll()
         folders.forEach { enqueue(.scan($0.path)) }
     }
 
@@ -217,7 +261,8 @@ public final class Library {
             options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
             includingResourceValuesForKeys: nil, relativeTo: nil
         )
-        try? database.addWatchedFolder(WatchedFolder(path: url.path, bookmark: bookmark))
+        let remount = (try? url.resourceValues(forKeys: [.volumeURLForRemountingKey]))?.volumeURLForRemounting
+        try? database.addWatchedFolder(WatchedFolder(path: url.path, bookmark: bookmark, remountURL: remount?.absoluteString))
         reloadFolders()
         enqueue(.scan(url.path))
     }
@@ -278,6 +323,8 @@ public final class Library {
                 var accessed: [String] = []
                 for folder in folders where !alreadyAccessed.contains(folder.path) {
                     guard let bookmark = folder.bookmark else { continue }
+                    // A share that isn't connected: reconnecting can take a while, so it happens on its own (below).
+                    if folder.isOnNetworkShare, !FileManager.default.fileExists(atPath: folder.path) { continue }
                     var stale = false
                     guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale),
                           url.startAccessingSecurityScopedResource()
@@ -285,6 +332,14 @@ public final class Library {
                     accessed.append(folder.path)
                     if stale, let fresh = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil) {
                         try? database.updateBookmark(fresh, forFolder: folder.path)
+                    }
+                }
+                // Note the share address of folders added before it was recorded.
+                var foundShares = false
+                for folder in folders where !folder.isOnNetworkShare {
+                    if let remount = (try? URL(fileURLWithPath: folder.path).resourceValues(forKeys: [.volumeURLForRemountingKey]))?.volumeURLForRemounting {
+                        try? database.setRemountURL(remount.absoluteString, forFolder: folder.path)
+                        foundShares = true
                     }
                 }
                 let roots = folders.map { URL(fileURLWithPath: $0.path).canonicalPath }
@@ -295,13 +350,17 @@ public final class Library {
                         for path in Set(changed) { self?.enqueue(.scan(path)) }
                     }
                 }
-                return (accessed, roots, offline, watcher)
+                return (accessed, roots, offline, watcher, foundShares)
             }.value
             guard let self else { return }
             accessedFolders.formUnion(state.0)
             watchedRoots = state.1
             offlineFolders = state.2
             watcher = state.3
+            if state.4 { self.folders = (try? database.watchedFolders()) ?? self.folders }
+            for folder in self.folders where folder.isOnNetworkShare && offlineFolders.contains(folder.path) {
+                if reconnectTried.insert(folder.path).inserted { reconnect(folder) }
+            }
         }
     }
 
@@ -316,6 +375,20 @@ public final class Library {
         if wasExcluded, FolderRules(folderRules).kind(for: path) != .excluded {
             enqueue(.scan(Classifier.isMediaFile(url) ? url.deletingLastPathComponent().canonicalPath : path))
         }
+    }
+
+    /// Moves items to a category (nil: back to where MacShow would put them).
+    public func setCategory(_ kind: MediaItem.Kind?, for items: [MediaItem]) {
+        save(items.map { item in
+            var edit = edits[item.path] ?? ItemEdit(path: item.path)
+            edit.kind = kind
+            return edit
+        })
+    }
+
+    /// Saves Get Info changes (an edit that changes nothing is removed).
+    public func save(_ edits: [ItemEdit]) {
+        try? database.save(edits)
     }
 
     // MARK: Resume points
@@ -355,6 +428,90 @@ public final class Library {
         writeQueue.async { try? database.clearPosition(for: id) }
     }
 
+    // MARK: Artist pictures
+
+    /// Photos found or chosen for artists, by artist id.
+    public private(set) var artistImages: [String: String] = [:]
+    public private(set) var findingArtistPictures: (done: Int, total: Int)?
+
+    /// The artist's photo if one was found or chosen, else their newest album cover.
+    public func picture(of artist: Artist) -> String? {
+        artistImages[artist.id] ?? artist.artworkKey
+    }
+
+    public func setPicture(_ artworkKey: String?, for artist: Artist) {
+        let database = database
+        try? database.writer.write { db in
+            if let artworkKey {
+                try db.execute(sql: "INSERT OR REPLACE INTO artistImage (artistId, artworkKey) VALUES (?, ?)", arguments: [artist.id, artworkKey])
+            } else {
+                try db.execute(sql: "DELETE FROM artistImage WHERE artistId = ?", arguments: [artist.id])
+            }
+        }
+        artistImages[artist.id] = artworkKey
+    }
+
+    /// Looks up a photo for each artist with no picture at all, picking the
+    /// best match itself (Deezer; only names are sent). You can change any later.
+    public func findArtistPictures(for artists: [Artist]) {
+        let missing = artists.filter { picture(of: $0) == nil }
+        guard findingArtistPictures == nil, !missing.isEmpty else { return }
+        findingArtistPictures = (0, missing.count)
+        Task {
+            let fetcher = ArtworkFetcher()
+            for (done, artist) in missing.enumerated() {
+                findingArtistPictures = (done, missing.count)
+                if case .found(let data) = await fetcher.artistPhoto(artist.name), let key = artwork.store(data) {
+                    setPicture(key, for: artist)
+                }
+                try? await Task.sleep(for: .milliseconds(250))  // Deezer allows 50 requests per 5 seconds
+            }
+            findingArtistPictures = nil
+        }
+    }
+
+    // MARK: Recaps and credits
+
+    /// Where each show's recap or intro ends and its credits start, marked
+    /// while watching. Keyed by show id.
+    public private(set) var showMarkers: [String: ShowMarkers] = {
+        UserDefaults.standard.data(forKey: "showMarkers").flatMap { try? JSONDecoder().decode([String: ShowMarkers].self, from: $0) } ?? [:]
+    }()
+
+    public func markers(for item: MediaItem) -> ShowMarkers? {
+        item.kind == .episode ? showMarkers[Show.id(for: item)] : nil
+    }
+
+    /// Recap/intro ends at `position` in this show's episodes (nil clears it).
+    public func setRecapEnd(_ position: Double?, for item: MediaItem) {
+        updateMarkers(for: item) { $0.recapEnd = position }
+    }
+
+    /// Credits start `position` into an episode `duration` long: kept as the
+    /// time before the end, which carries over to episodes of other lengths.
+    public func setCreditsStart(_ position: Double?, duration: Double, for item: MediaItem) {
+        updateMarkers(for: item) { $0.creditsLength = position.map { max(0, duration - $0) } }
+    }
+
+    private func updateMarkers(for item: MediaItem, _ change: (inout ShowMarkers) -> Void) {
+        guard item.kind == .episode else { return }
+        let id = Show.id(for: item)
+        var markers = showMarkers[id] ?? ShowMarkers()
+        change(&markers)
+        showMarkers[id] = markers.recapEnd == nil && markers.creditsLength == nil ? nil : markers
+        UserDefaults.standard.set(try? JSONEncoder().encode(showMarkers), forKey: "showMarkers")
+    }
+
+    /// What to watch after the last episode of `show`: the episode to pick up
+    /// in another show you're watching, else the first unwatched episode of
+    /// another show.
+    public func nextShow(after showID: String) -> MediaItem? {
+        if let next = continueWatching.first(where: { $0.kind == .episode && Show.id(for: $0) != showID }) { return next }
+        return index.shows.lazy.filter { $0.id != showID }.compactMap { show in
+            show.episodes.first { episode in episode.id.flatMap { self.positions[$0] }?.isFinished != true }
+        }.first
+    }
+
     /// Items taken off Continue Watching, and when. One comes back once it's
     /// played again (its resume point is newer than this).
     public private(set) var removedFromContinueWatching: [Int64: Date] = {
@@ -377,7 +534,7 @@ public final class Library {
     public var continueWatching: [MediaItem] {
         var result: [(item: MediaItem, date: Date)] = []
         for position in positions.values {
-            guard let item = index.itemsByID[position.mediaItemId], item.kind == .movie || item.kind == .episode else { continue }
+            guard let item = index.itemsByID[position.mediaItemId], item.isVideo, item.kind != .musicVideo else { continue }
             if position.isResumable {
                 result.append((item, position.updatedAt))
             } else if position.isFinished, item.kind == .episode, let next = item.id.flatMap({ index.nextEpisode[$0] }),
@@ -509,6 +666,33 @@ public final class Library {
     }
 
     public func add(_ items: [MediaItem], to playlist: Playlist) { try? database.add(items, to: playlist) }
+
+    /// Creates playlists from the Music app's exported Library.xml, or one from
+    /// an M3U file. Songs not in this library are skipped, and so are playlists
+    /// left with none.
+    public func importPlaylists(from url: URL) throws -> (playlists: Int, songs: Int, missing: Int) {
+        let data = try Data(contentsOf: url)
+        let lists: [(name: String, paths: [String])]
+        if ["m3u", "m3u8"].contains(url.pathExtension.lowercased()) {
+            let text = String(decoding: data, as: UTF8.self)
+            lists = [(url.deletingPathExtension().lastPathComponent, PlaylistFile.m3uPaths(text, relativeTo: url.deletingLastPathComponent()))]
+        } else {
+            lists = try PlaylistFile.musicLibraryPlaylists(data)
+        }
+        let rules = FolderRules(folderRules)
+        let byPath = Dictionary(((try? database.allItems()) ?? []).filter { rules.kind(for: $0.path) != .adult }.map { ($0.path, $0) },
+                                uniquingKeysWith: { first, _ in first })
+        var result = (playlists: 0, songs: 0, missing: 0)
+        for list in lists {
+            let items = list.paths.compactMap { byPath[$0] ?? byPath[URL(fileURLWithPath: $0).canonicalPath] }
+            result.missing += list.paths.count - items.count
+            guard !items.isEmpty else { continue }
+            createPlaylist(named: list.name, with: items)
+            result.playlists += 1
+            result.songs += items.count
+        }
+        return result
+    }
     public func rename(_ playlist: Playlist, to name: String) { try? database.renamePlaylist(playlist, to: name) }
     public func delete(_ playlist: Playlist) { try? database.deletePlaylist(playlist) }
     public func removeEntries(positions: [Int], from playlist: Playlist) { try? database.removeEntries(positions: positions, from: playlist) }

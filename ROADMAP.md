@@ -94,6 +94,62 @@ The direct download first (see [Distribution](#distribution)):
 Done when a fresh Mac can download, open and update MacShow with no warnings,
 and see `~/Music` without being asked for permission.
 
+### Next: Casting
+
+Send video to an Apple TV (AirPlay) and smart TVs (DLNA). Files are repackaged
+on the fly, not re-encoded; only what the TV can't decode is converted (AV1 or
+XviD video, DTS or TrueHD audio to Dolby Digital Plus 5.1). The player shows
+whether a file plays Direct or Converting.
+
+### Next: Network storage
+
+Media on a NAS or on shared folders on other Macs and PCs in the house.
+
+- Find shares on the network (Bonjour SMB) and connect from Settings, with the
+  password kept in the Keychain.
+- Reconnect saved shares at launch, and treat a share that's away like an
+  unplugged drive (items stay, shown as unavailable).
+- Rescan on a timer and when the share comes back: FSEvents don't report
+  changes made by other computers on SMB.
+- Keep scans light over the network: read only new and changed files and
+  their tags, and make video stills in the background.
+
+### Proposed: Agent control (MCP)
+
+Let AI agents (Claude Code, Claude Desktop, others) run MacShow: find and play
+things, manage the queue and playlists, sort and tag the library, fetch artwork.
+
+**One command layer, several doors.** The operations live once, in
+`MacShowCore` (search, play, queue, categories, Get Info edits, artwork,
+playlists, folder rules, rescan), and are exposed through:
+
+1. **An MCP server inside the app** (Streamable HTTP on `127.0.0.1`). Off by
+   default; Settings › Agents turns it on, creates a token and shows the line
+   to paste, e.g. `claude mcp add --transport http macshow http://127.0.0.1:PORT/mcp
+   --header "Authorization: Bearer …"`. A sandboxed app can serve on localhost
+   (the `network.server` entitlement, which casting needs too).
+2. **A small stdio bridge** (`MacShow.app/Contents/MacOS/macshow-mcp`) for
+   clients that only start local processes. It forwards to the same endpoint.
+3. **App Intents**, so the same actions work in Shortcuts, Siri and Spotlight.
+4. **A Claude Code plugin** bundling the MCP config with a skill that knows the
+   library's vocabulary ("play the next Yellowstone episode", "tag these as
+   Personal").
+
+**Tools** (first set): `search`, `now_playing`, `play`, `pause`, `seek`,
+`next`/`previous`, `set_volume`, `queue_list`/`queue_add`/`queue_move`,
+`playlist_create`/`playlist_add`/`playlist_export`, `get_info`/`edit_info`,
+`set_category`, `find_artwork`/`set_artwork`, `subtitles_list`/`subtitles_select`,
+`rescan`.
+
+**Safety.** Adult content is invisible to agents unless unlocked in the app at
+that moment; changes to folder rules stay in the app's UI; a read-only switch
+limits agents to looking and playing. The token never leaves this Mac.
+
+**Why not only AppleScript or Shortcuts:** both work but are clumsy for agents
+(no typed results, no discovery of what's possible); MCP gives them a typed,
+self-describing list of tools, and the intents come almost free on top of the
+same layer.
+
 ### Later: Mac App Store
 
 A second build of the same sandboxed app, without Sparkle and with the store-safe

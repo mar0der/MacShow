@@ -9,11 +9,17 @@ public struct WatchedFolder: Codable, Hashable, Identifiable, Sendable, Fetchabl
     public var id: Int64?
     public var path: String
     public var bookmark: Data?
+    /// For a folder on a network share: the share's address ("smb://nas.local/Media"),
+    /// to connect to it again.
+    public var remountURL: String?
 
-    public init(path: String, bookmark: Data? = nil) {
+    public init(path: String, bookmark: Data? = nil, remountURL: String? = nil) {
         self.path = path
         self.bookmark = bookmark
+        self.remountURL = remountURL
     }
+
+    public var isOnNetworkShare: Bool { remountURL != nil }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
@@ -78,6 +84,16 @@ public final class LibraryDatabase: Sendable {
         registerBookmarkMigration(&migrator)
         registerArtworkLookupMigration(&migrator)
         registerFolderRuleMigration(&migrator)
+        registerItemEditMigration(&migrator)
+        migrator.registerMigration("v11-artist-images") { db in
+            try db.create(table: "artistImage") { t in
+                t.primaryKey("artistId", .text)
+                t.column("artworkKey", .text).notNull()
+            }
+        }
+        migrator.registerMigration("v9-folder-remount") { db in
+            try db.alter(table: "watchedFolder") { t in t.add(column: "remountURL", .text) }
+        }
         return migrator
     }
 
@@ -136,6 +152,12 @@ public final class LibraryDatabase: Sendable {
         try writer.write { db in
             var folder = folder
             try folder.insert(db, onConflict: .ignore)
+        }
+    }
+
+    public func setRemountURL(_ url: String, forFolder path: String) throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE watchedFolder SET remountURL = ? WHERE path = ?", arguments: [url, path])
         }
     }
 

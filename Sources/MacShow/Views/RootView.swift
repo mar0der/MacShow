@@ -2,10 +2,10 @@ import MacShowCore
 import SwiftUI
 
 enum SidebarItem: Hashable, RawRepresentable {
-    case home, albums, artists, songs, movies, shows, homeVideos, books, adult
+    case home, albums, artists, songs, movies, shows, homeVideos, musicVideos, books, adult
     case playlist(Int64)
 
-    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .homeVideos, .books, .adult]
+    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .homeVideos, .musicVideos, .books, .adult]
 
     init?(rawValue: String) {
         if rawValue.hasPrefix("playlist:"), let id = Int64(rawValue.dropFirst("playlist:".count)) {
@@ -26,6 +26,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .movies: "movies"
         case .shows: "shows"
         case .homeVideos: "homeVideos"
+        case .musicVideos: "musicVideos"
         case .books: "books"
         case .adult: "adult"
         case .playlist(let id): "playlist:\(id)"
@@ -41,6 +42,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .movies: "Movies"
         case .shows: "TV Shows"
         case .homeVideos: "Home Videos"
+        case .musicVideos: "Music Videos"
         case .books: "All Books"
         case .adult: "Adult"
         case .playlist: "Playlist"
@@ -56,6 +58,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .movies: "film"
         case .shows: "tv"
         case .homeVideos: "video"
+        case .musicVideos: "music.note.tv"
         case .books: "book"
         case .adult: "eye.slash"
         case .playlist: "music.note.list"
@@ -86,6 +89,24 @@ struct RootView: View {
         }
         // Closing the window stops a video (music keeps playing).
         .onDisappear { if player.isVideo { player.stop() } }
+        .onChange(of: player.isVideoMinimized) { _, minimized in
+            if minimized { showCurrentShow() }
+        }
+    }
+
+    /// Back from an episode lands on its show's page, to pick another one
+    /// (the episode carries on in the corner).
+    private func showCurrentShow() {
+        guard let item = player.currentItem, item.kind == .episode,
+              let show = library.index.shows.first(where: { $0.episodes.contains { $0.id == item.id } })
+        else { return }
+        selection = .shows
+        search = ""
+        // After the selection change has reset the path.
+        DispatchQueue.main.async {
+            path = NavigationPath()
+            path.append(ShowRef(id: show.id))
+        }
     }
 
     private var browser: some View {
@@ -120,6 +141,7 @@ struct RootView: View {
                 row(.movies)
                 row(.shows)
                 row(.homeVideos)
+                row(.musicVideos)
                 if library.showingAdult {
                     row(.adult)
                         .contextMenu { Button("Hide Adult Content") { library.showingAdult = false } }
@@ -133,6 +155,8 @@ struct RootView: View {
                             .tag(SidebarItem.playlist(id))
                             .contextMenu {
                                 Button("Play") { player.play(contents.items) }
+                                Button("Export as M3U…") { exportPlaylist(contents) }
+                                Divider()
                                 Button("Delete Playlist", role: .destructive) { library.delete(contents.playlist) }
                             }
                     }
@@ -180,6 +204,7 @@ struct RootView: View {
             case .movies: VideoGridView(title: "Movies", icon: "film", videos: library.index.movies)
             case .shows: ShowsView()
             case .homeVideos: VideoGridView(title: "Home Videos", icon: "video", videos: library.index.homeVideos)
+            case .musicVideos: VideoGridView(title: "Music Videos", icon: "music.note.tv", videos: library.index.musicVideos)
             case .books: BooksView()
             case .adult:
                 if library.showingAdult {

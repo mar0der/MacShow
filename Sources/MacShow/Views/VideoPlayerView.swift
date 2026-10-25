@@ -1,36 +1,13 @@
 import MacShowCore
 import SwiftUI
 
-/// Subtitle and audio-track choices, plus adding a subtitle file.
+/// The subtitles button in the video controls.
 struct TracksMenu: View {
     @Environment(Player.self) private var player
 
     var body: some View {
-        let subtitles = player.tracks("sub")
-        let audio = player.tracks("audio")
-        Menu {
-            Section("Subtitles") {
-                Toggle("Off", isOn: Binding(get: { !subtitles.contains(where: \.isSelected) }, set: { _ in player.select(nil, type: "sub") }))
-                ForEach(subtitles) { track in
-                    Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "sub") }))
-                }
-                Button("Add Subtitle File…") {
-                    let panel = NSOpenPanel()
-                    panel.allowedContentTypes = []
-                    panel.allowsOtherFileTypes = true
-                    panel.message = "Choose a subtitle file (SRT, ASS, VTT…)"
-                    if panel.runModal() == .OK, let url = panel.url { player.addSubtitleFile(url) }
-                }
-            }
-            if audio.count > 1 {
-                Section("Audio") {
-                    ForEach(audio) { track in
-                        Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "audio") }))
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: subtitles.contains(where: \.isSelected) ? "captions.bubble.fill" : "captions.bubble")
+        Menu { TrackChoices() } label: {
+            Image(systemName: player.tracks("sub").contains(where: \.isSelected) ? "captions.bubble.fill" : "captions.bubble")
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -39,15 +16,121 @@ struct TracksMenu: View {
     }
 }
 
+/// Subtitle and audio-track choices, plus adding a subtitle file.
+struct TrackChoices: View {
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        let subtitles = player.tracks("sub")
+        let audio = player.tracks("audio")
+        Section("Subtitles") {
+            Toggle("Off", isOn: Binding(get: { !subtitles.contains(where: \.isSelected) }, set: { _ in player.select(nil, type: "sub") }))
+            ForEach(subtitles) { track in
+                Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "sub") }))
+            }
+            if let video = player.currentItem?.url {
+                let loaded = player.loadedSubtitleFiles()
+                let found = SubtitleFinder.candidates(for: video).filter { !loaded.contains($0.path) }
+                if !found.isEmpty {
+                    Menu("Found Next to the Video") {
+                        ForEach(found.prefix(12), id: \.self) { file in
+                            Button(file.path.replacingOccurrences(of: video.deletingLastPathComponent().path + "/", with: "")) {
+                                player.addSubtitleFile(file)
+                            }
+                        }
+                    }
+                }
+            }
+            Button("Add Subtitle File…") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = []
+                panel.allowsOtherFileTypes = true
+                panel.message = "Choose a subtitle file (SRT, ASS, VTT…)"
+                if panel.runModal() == .OK, let url = panel.url { player.addSubtitleFile(url) }
+            }
+        }
+        if audio.count > 1 {
+            Section("Audio") {
+                ForEach(audio) { track in
+                    Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "audio") }))
+                }
+            }
+        }
+    }
+}
+
+/// Right-click on the picture.
+private struct VideoContextMenu: View {
+    @Environment(Player.self) private var player
+    @Environment(Library.self) private var library
+    @Environment(\.openWindow) private var openWindow
+    private static let speeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+    var body: some View {
+        Button(player.isPaused ? "Play" : "Pause") { player.togglePause() }
+        Button("Back 10 Seconds") { player.skip(-10) }
+        Button("Forward 10 Seconds") { player.skip(10) }
+        if let index = player.queueIndex, index + 1 < player.queue.count {
+            Button(player.queue[index + 1].kind == .episode ? "Next Episode" : "Next") { player.next() }
+        }
+        Divider()
+        TrackChoices()
+        Divider()
+        let chapters = player.chapters()
+        if chapters.count > 1 {
+            Menu("Chapters") {
+                ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
+                    Toggle("\(chapter.title)  \(Format.time(chapter.start))", isOn: Binding(get: { player.chapterIndex == index }, set: { _ in player.seek(to: chapter.start) }))
+                }
+            }
+        }
+        Menu("Speed") {
+            ForEach(Self.speeds, id: \.self) { speed in
+                Toggle(speed == 1 ? "Normal" : String(format: "%g×", speed), isOn: Binding(get: { player.speed == speed }, set: { _ in player.setSpeed(speed) }))
+            }
+        }
+        @Bindable var player = player
+        Toggle("Fill Window (Crop Black Bars)", isOn: $player.fillsWindow)
+        if let item = player.currentItem, item.kind == .episode {
+            Menu("Recap & Credits") {
+                Button("Recap Ends Here") { library.setRecapEnd(player.position, for: item) }
+                Button("Credits Start Here") { library.setCreditsStart(player.position, duration: player.duration, for: item) }
+                if let marks = library.markers(for: item) {
+                    Divider()
+                    if let end = marks.recapEnd { Text("Recap: skips to \(Format.time(end))") }
+                    if let credits = marks.creditsLength { Text("Credits: last \(Format.time(credits))") }
+                    Button("Clear for \(item.show ?? "This Show")") {
+                        library.setRecapEnd(nil, for: item)
+                        library.setCreditsStart(nil, duration: player.duration, for: item)
+                    }
+                }
+            }
+        }
+        Divider()
+        Button(VideoScreen.isFullScreen ? "Exit Full Screen" : "Enter Full Screen") { VideoScreen.toggleFullScreen() }
+        Button("Back to Library") { player.isVideoMinimized = true }
+        if let item = player.currentItem {
+            Divider()
+            if let id = item.id { Button("Get Info…") { openWindow(id: "info", value: [id]) } }
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
+        }
+    }
+}
+
 /// A playing video, filling the main window: the picture, with controls that
-/// fade in when the mouse moves. Click to pause, double-click for full screen.
+/// fade in when the mouse moves. Click shows or hides the controls (Space
+/// pauses), double-click goes full screen, right-click has tracks and more.
 struct VideoPlayerView: View {
     @Environment(Player.self) private var player
+    @Environment(Library.self) private var library
     @State private var controlsVisible = true
     @State private var hideTask: Task<Void, Never>?
     @State private var isFullScreen = false
     /// The episode whose Up Next card was closed.
     @State private var dismissedUpNext: String?
+    /// Where the pointer last was on screen: the picture moving under a still
+    /// pointer (going full screen) mustn't count as the mouse moving.
+    @State private var lastPointer = NSEvent.mouseLocation
 
     var body: some View {
         @Bindable var player = player
@@ -64,8 +147,12 @@ struct VideoPlayerView: View {
             // Catches clicks on the picture (the Metal view itself doesn't).
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) { VideoScreen.toggleFullScreen() }
-                .onTapGesture { player.togglePause(); showControls() }
+                .onTapGesture(count: 2) {
+                    VideoScreen.toggleFullScreen()
+                    hideControls()
+                }
+                .onTapGesture { controlsVisible ? hideControls() : showControls() }
+                .contextMenu { VideoContextMenu() }
 
             VStack {
                 HStack(spacing: 12) {
@@ -73,7 +160,7 @@ struct VideoPlayerView: View {
                         Image(systemName: "chevron.left").font(.title3.weight(.semibold))
                     }
                     .buttonStyle(.borderless)
-                    .help("Back to Library, Keep Playing (Esc)")
+                    .help(player.currentItem?.show.map { "Back to \($0), Keep Playing (Esc)" } ?? "Back to Library, Keep Playing (Esc)")
                     VStack(alignment: .leading, spacing: 1) {
                         Text(player.currentItem?.title ?? player.title).font(.headline)
                         if let item = player.currentItem, item.kind == .episode, let show = item.show {
@@ -155,15 +242,20 @@ struct VideoPlayerView: View {
 
             // Stay up while the controls are hidden: they're what you'd reach for then.
             VStack(alignment: .trailing, spacing: 12) {
-                if isIntro {
+                if let recapEnd {
+                    Button("Skip Recap") { player.seek(to: recapEnd) }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                } else if isIntro {
                     Button("Skip Intro") { player.nextChapter() }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                 }
                 if let next = upNext {
-                    UpNextCard(next: next, secondsLeft: player.duration - player.position) {
-                        dismissedUpNext = player.currentItem?.path
-                    }
+                    UpNextCard(next: next, heading: "Up Next · in " + Self.countdown(player.duration - player.position),
+                               play: player.next, dismiss: dismissUpNext)
+                } else if let next = nextShow {
+                    UpNextCard(next: next, heading: "Watch Next: \(next.show ?? next.title)", play: { play(next) }, dismiss: dismissUpNext)
                 }
             }
             .padding(.trailing, 32)
@@ -174,7 +266,12 @@ struct VideoPlayerView: View {
         .background(.black)
         .ignoresSafeArea()
         .hidingWindowTitle()
-        .onContinuousHover { _ in showControls() }
+        .onContinuousHover { _ in
+            let pointer = NSEvent.mouseLocation
+            guard abs(pointer.x - lastPointer.x) + abs(pointer.y - lastPointer.y) > 2 else { return }
+            lastPointer = pointer
+            showControls()
+        }
         .onReceive(NotificationCenter.default.publisher(for: VideoScreen.activity)) { _ in showControls() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in isFullScreen = VideoScreen.isFullScreen }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in isFullScreen = VideoScreen.isFullScreen }
@@ -188,19 +285,55 @@ struct VideoPlayerView: View {
         }
     }
 
-    /// The next episode, in the last 30 seconds of this one (it plays on its own at the end).
+    /// The playing episode, once its credits run: where the show's credits were
+    /// marked to start, else the last 30 seconds.
+    private var episodeInCredits: MediaItem? {
+        guard let current = player.currentItem, current.kind == .episode, current.path != dismissedUpNext, player.duration > 120 else { return nil }
+        let credits = library.markers(for: current)?.creditsLength ?? 30
+        return player.duration - player.position <= credits ? current : nil
+    }
+
+    /// The next episode during the credits (it plays on its own at the end).
     private var upNext: MediaItem? {
-        guard let current = player.currentItem, current.kind == .episode, current.path != dismissedUpNext,
-              let index = player.queueIndex, index + 1 < player.queue.count,
-              player.duration > 120, player.duration - player.position <= 30
-        else { return nil }
+        guard episodeInCredits != nil, let index = player.queueIndex, index + 1 < player.queue.count else { return nil }
         return player.queue[index + 1]
+    }
+
+    /// After a show's last episode: another show to watch.
+    private var nextShow: MediaItem? {
+        guard let current = episodeInCredits, let index = player.queueIndex, index + 1 >= player.queue.count else { return nil }
+        return library.nextShow(after: Show.id(for: current))
+    }
+
+    /// Where the show's recap ends, while it's still ahead.
+    private var recapEnd: Double? {
+        guard let current = player.currentItem, let end = library.markers(for: current)?.recapEnd, player.position < end - 1 else { return nil }
+        return end
+    }
+
+    private func dismissUpNext() { dismissedUpNext = player.currentItem?.path }
+
+    /// "25s", or "3:05" from a minute up.
+    private static func countdown(_ seconds: Double) -> String {
+        seconds < 60 ? "\(max(0, Int(seconds.rounded())))s" : Format.time(seconds)
+    }
+
+    /// Plays an episode of another show, with the rest of that show after it.
+    private func play(_ episode: MediaItem) {
+        guard let show = library.index.shows.first(where: { $0.id == Show.id(for: episode) }) else { return }
+        player.play(show.episodes, startAt: show.episodes.firstIndex { $0.id == episode.id } ?? 0, showVideo: true)
     }
 
     /// Playing a chapter named like an intro (and it isn't the last chapter).
     private var isIntro: Bool {
         guard let title = player.chapterTitle?.lowercased(), let chapter = player.chapterIndex else { return false }
         return (title.contains("intro") || title.contains("opening")) && chapter + 1 < player.chapters().count
+    }
+
+    private func hideControls() {
+        hideTask?.cancel()
+        controlsVisible = false
+        NSCursor.setHiddenUntilMouseMoves(true)
     }
 
     /// Shows the controls and hides them (and the pointer) again after three idle seconds while playing.
@@ -251,24 +384,24 @@ private struct CastScreen: View {
     }
 }
 
-/// "Up Next" over the last seconds of an episode.
+/// "Up Next" (or another show) over an episode's credits.
 private struct UpNextCard: View {
     let next: MediaItem
-    let secondsLeft: Double
+    let heading: String
+    let play: () -> Void
     let dismiss: () -> Void
-    @Environment(Player.self) private var player
 
     var body: some View {
         HStack(spacing: 14) {
             VideoStill(item: next, cornerRadius: 6).frame(width: 160)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Up Next · in \(max(0, Int(secondsLeft.rounded())))s").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(heading).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
                 Text(next.title).font(.headline).lineLimit(1)
                 if let season = next.season, let episode = next.episode {
                     Text("S\(season) E\(episode)").font(.caption).foregroundStyle(.secondary)
                 }
                 HStack {
-                    Button { player.next() } label: { Label("Play Now", systemImage: "play.fill") }
+                    Button(action: play) { Label("Play Now", systemImage: "play.fill") }
                         .buttonStyle(.borderedProminent)
                     Button("Hide", action: dismiss)
                 }

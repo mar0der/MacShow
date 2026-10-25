@@ -1,4 +1,5 @@
 import AppKit
+import CoreAudio
 import Libmpv
 import MacShowCore
 import Observation
@@ -30,6 +31,62 @@ final class Player {
         }
     }
     var isMuted = false { didSet { setFlag("mute", isMuted) } }
+    /// Zooms the picture to fill the window, cropping black bars (or the picture's edges).
+    var fillsWindow = false { didSet { setDouble("panscan", fillsWindow ? 1 : 0) } }
+    /// Bit-perfect output: mpv takes the audio device for itself and switches
+    /// it to each file's sample rate, instead of macOS resampling everything to
+    /// the rate set in Audio MIDI Setup. Other apps are silent meanwhile.
+    var exclusiveAudio = UserDefaults.standard.bool(forKey: "exclusiveAudio") {
+        didSet {
+            UserDefaults.standard.set(exclusiveAudio, forKey: "exclusiveAudio")
+            setString("audio-exclusive", exclusiveAudio ? "yes" : "no")
+            command("ao-reload")
+            refreshDeviceSampleRate()
+        }
+    }
+    /// The equalizer: on or off, the usual setting, and settings kept for single albums.
+    var equalizerOn = UserDefaults.standard.bool(forKey: "equalizerOn") {
+        didSet { UserDefaults.standard.set(equalizerOn, forKey: "equalizerOn"); applyEqualizer() }
+    }
+    var equalizer = Player.load(Equalizer.self, key: "equalizer") ?? Equalizer() {
+        didSet { Player.save(equalizer, key: "equalizer"); applyEqualizer() }
+    }
+    var albumEqualizers = Player.load([String: Equalizer].self, key: "albumEqualizers") ?? [:] {
+        didSet { Player.save(albumEqualizers, key: "albumEqualizers"); applyEqualizer() }
+    }
+    @ObservationIgnored private var appliedFilter = ""
+
+    /// Album equalizers are keyed by album artist and album.
+    static func albumKey(_ item: MediaItem?) -> String? {
+        guard let item, item.kind == .music, let album = item.album else { return nil }
+        return (item.albumArtistOrArtist + "\u{1F}" + album).lowercased()
+    }
+
+    /// The equalizer the playing item uses: its album's, else the usual one.
+    var activeEqualizer: Equalizer {
+        Self.albumKey(currentItem).flatMap { albumEqualizers[$0] } ?? equalizer
+    }
+
+    /// Sets mpv's filter, only when it changes: resetting it costs a moment of
+    /// audio, which would break gapless playback between tracks.
+    private func applyEqualizer() {
+        let filter = equalizerOn ? activeEqualizer.mpvFilter ?? "" : ""
+        guard filter != appliedFilter else { return }
+        appliedFilter = filter
+        setString("af", filter)
+    }
+
+    private static func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
+        UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(type, from: $0) }
+    }
+
+    private static func save<T: Encodable>(_ value: T, key: String) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(value), forKey: key)
+    }
+
+    /// Sample rates of the playing file and of the audio device it plays on.
+    private(set) var fileSampleRate: Int?
+    private(set) var deviceSampleRate: Int?
     /// Playback speed (audiobooks); pitch is kept.
     var speed: Double = 1 {
         didSet {
@@ -81,6 +138,8 @@ final class Player {
     /// Where each queued file should start (resume points, or a chapter or
     /// bookmark you picked), read by mpv's on_load hook on the event thread.
     @ObservationIgnored nonisolated private let startTimes = StartTimes()
+    /// Music videos played as songs: mpv skips their picture (also read by the on_load hook).
+    @ObservationIgnored nonisolated private let audioOnly = PathSet()
 
     /// Audiobooks keep their own speed; everything else plays at 1×.
     static let audiobookSpeedKey = "audiobookSpeed"
@@ -112,6 +171,8 @@ final class Player {
             ("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"),
             ("hwdec", "videotoolbox"), ("keep-open", "yes"), ("ytdl", "no"),
             ("audio-display", "no"),            // the UI shows cover art itself
+            // Subtitle files named like the video (also "movie.en.srt"), beside it or in a Subs folder.
+            ("sub-auto", "fuzzy"), ("sub-file-paths", "Subs:subs:Subtitles:subtitles"),
             ("gapless-audio", "yes"), ("replaygain", "album"), ("replaygain-fallback", "0"),
             ("input-default-bindings", "no"), ("osc", "no"), ("idle", "yes"),
             // No Lua at all: no user scripts, no config, none of mpv's built-in scripts.
@@ -121,11 +182,13 @@ final class Player {
         ] {
             mpv_set_option_string(mpv, name, value)
         }
+        mpv_set_option_string(mpv, "audio-exclusive", exclusiveAudio ? "yes" : "no")
         mpv_request_log_messages(mpv, "error")
 
         let status = mpv_initialize(mpv)
         guard status >= 0 else { fatalError("mpv_initialize: \(String(cString: mpv_error_string(status)))") }
         setDouble("volume", volume)
+        applyEqualizer()
 
         for (name, format) in [
             ("time-pos", MPV_FORMAT_DOUBLE), ("duration", MPV_FORMAT_DOUBLE),
@@ -133,6 +196,7 @@ final class Player {
             ("chapter-metadata/title", MPV_FORMAT_STRING), ("playlist-pos", MPV_FORMAT_INT64),
             ("track-list/count", MPV_FORMAT_INT64), ("sid", MPV_FORMAT_STRING), ("aid", MPV_FORMAT_STRING),
             ("chapter", MPV_FORMAT_INT64),
+            ("audio-params/samplerate", MPV_FORMAT_INT64), ("audio-out-params/samplerate", MPV_FORMAT_INT64),
         ] {
             mpv_observe_property(mpv, 0, name, format)
         }
@@ -156,13 +220,15 @@ final class Player {
     /// Replaces the queue with `items` and starts playing `items[index]`, at
     /// `time` if given. Movies, episodes and audiobooks otherwise pick up where
     /// they were left.
-    func play(_ items: [MediaItem], startAt index: Int = 0, fromBeginning: Bool = false, at time: Double? = nil) {
+    /// Music videos play as songs, without their picture, unless `showVideo`
+    /// (played from Music Videos).
+    func play(_ items: [MediaItem], startAt index: Int = 0, fromBeginning: Bool = false, at time: Double? = nil, showVideo: Bool = false) {
         guard items.indices.contains(index) else { return }
         // Files on a drive that isn't connected: play a reachable copy, or leave them out.
         if let library, items.contains(where: { library.playableCopy(of: $0) != $0 }) {
             let reachable = items.indices.compactMap { offset in library.playableCopy(of: items[offset]).map { (offset, $0) } }
             guard let start = reachable.firstIndex(where: { $0.0 == index }) else { return }
-            return play(reachable.map(\.1), startAt: start, fromBeginning: fromBeginning, at: time)
+            return play(reachable.map(\.1), startAt: start, fromBeginning: fromBeginning, at: time, showVideo: showVideo)
         }
         savePosition()
         command("stop")
@@ -181,12 +247,13 @@ final class Player {
         }
         starts[items[index].path] = fromBeginning ? nil : (time ?? starts[items[index].path])
         startTimes.replace(with: starts)
+        audioOnly.replace(with: showVideo ? [] : Set(items.filter { $0.kind == .musicVideo }.map(\.path)))
         command("playlist-play-index", String(index))
         setFlag("pause", false)
     }
 
     private func resumePoint(for item: MediaItem) -> Double? {
-        guard item.kind != .music, let saved = library?.position(for: item), saved.isResumable else { return nil }
+        guard !item.isMusic, let saved = library?.position(for: item), saved.isResumable else { return nil }
         return saved.position
     }
 
@@ -195,7 +262,7 @@ final class Player {
     /// already point at the next file while the old one's events arrive.
     /// `publish` false skips updating the UI (the periodic saves during playback).
     func savePosition(publish: Bool = true) {
-        guard let item = loadedItem, item.kind != .music, duration > 0, position > 0 else { return }
+        guard let item = loadedItem, !item.isMusic, duration > 0, position > 0 else { return }
         library?.savePosition(position, duration: duration, for: item, publish: publish)
         startTimes.set(library?.position(for: item)?.isResumable == true ? position : nil, for: item.path)
     }
@@ -320,6 +387,13 @@ final class Player {
 
     func addSubtitleFile(_ url: URL) { command("sub-add", url.path, "select") }
 
+    /// Subtitle files mpv has loaded for the playing file.
+    func loadedSubtitleFiles() -> Set<String> {
+        _ = tracksVersion
+        let count = Int(string("track-list/count") ?? "") ?? 0
+        return Set((0..<count).compactMap { string("track-list/\($0)/external-filename") })
+    }
+
     /// Plays a file that isn't in the library (File › Open, or a launch argument).
     func open(_ url: URL) {
         savePosition()
@@ -389,6 +463,7 @@ final class Player {
     /// Inserts `items` right after the current one (or plays them if nothing is queued).
     func playNext(_ items: [MediaItem]) {
         guard let index = queueIndex, !queue.isEmpty else { return play(items) }
+        audioOnly.insert(items.filter { $0.kind == .musicVideo }.map(\.path))
         for item in items.reversed() { command("loadfile", item.path, "insert-next") }
         queue.insert(contentsOf: items, at: index + 1)
     }
@@ -396,8 +471,18 @@ final class Player {
     /// Appends `items` to the end of the queue (or plays them if nothing is queued).
     func addToQueue(_ items: [MediaItem]) {
         guard !queue.isEmpty else { return play(items) }
+        audioOnly.insert(items.filter { $0.kind == .musicVideo }.map(\.path))
         for item in items { command("loadfile", item.path, "append") }
         queue.append(contentsOf: items)
+    }
+
+    /// Drag to reorder Up Next. Same convention as `Array.move(fromOffsets:toOffset:)`,
+    /// which is also how mpv's playlist-move counts.
+    func moveQueueItem(from source: IndexSet, to destination: Int) {
+        guard source.count == 1, let from = source.first, from != destination, from + 1 != destination else { return }
+        command("playlist-move", String(from), String(destination))
+        queue.move(fromOffsets: source, toOffset: destination)
+        queueIndex = Int(string("playlist-pos") ?? "")
     }
 
     func removeFromQueue(at index: Int) {
@@ -434,6 +519,37 @@ final class Player {
         queueIndex = Int(string("playlist-pos") ?? "")
     }
 
+    /// The device switches rate (in exclusive mode) just after mpv's output starts.
+    private func refreshDeviceSampleRate() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            deviceSampleRate = Self.defaultDeviceSampleRate()
+        }
+    }
+
+    /// The nominal sample rate of the device MacShow plays on: the one it holds
+    /// exclusively (which drops out of the default-device lookup), else the default.
+    private static func defaultDeviceSampleRate() -> Int? {
+        func read<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, _ value: inout T) -> Bool {
+            var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+            var size = UInt32(MemoryLayout<T>.size)
+            return AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr
+        }
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size)
+        var devices = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &devices)
+        var device = devices.first { device in
+            var owner = pid_t(-1)
+            return read(device, kAudioDevicePropertyHogMode, &owner) && owner == getpid()
+        } ?? 0
+        if device == 0, !read(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, &device) { return nil }
+        var rate = Float64(0)
+        guard read(device, kAudioDevicePropertyNominalSampleRate, &rate), rate > 0 else { return nil }
+        return Int(rate)
+    }
+
     // MARK: Casting
 
     /// The file mpv has loaded.
@@ -466,14 +582,14 @@ final class Player {
 
     /// The TV played to the end: finished, and on to the next episode if there is one.
     func castDidReachEnd() {
-        if let item = loadedItem, item.kind != .music {
+        if let item = loadedItem, !item.isMusic {
             library?.savePosition(duration, duration: duration, for: item, publish: true)
             startTimes.set(nil, for: item.path)
         }
         if let index = queueIndex, index + 1 < queue.count { next() }
     }
 
-    /// AirPlay stopped: mpv carries on from where the TV was.
+    /// Casting stopped: mpv carries on from where the TV was.
     func castDidEnd(at position: Double, playing: Bool) {
         savePosition()
         command("seek", String(position), "absolute")
@@ -523,8 +639,13 @@ final class Player {
             case MPV_EVENT_HOOK:
                 // on_load: set this file's start point before mpv opens it.
                 let hook = event.data.assumingMemoryBound(to: mpv_event_hook.self).pointee
-                if String(cString: hook.name) == "on_load", let path = Self.string(mpv, "path"), let start = startTimes.time(for: path) {
-                    mpv_set_property_string(mpv, "file-local-options/start", String(start))
+                if String(cString: hook.name) == "on_load", let path = Self.string(mpv, "path") {
+                    if let start = startTimes.time(for: path) {
+                        mpv_set_property_string(mpv, "file-local-options/start", String(start))
+                    }
+                    if audioOnly.contains(path) {
+                        mpv_set_property_string(mpv, "file-local-options/vid", "no")
+                    }
                 }
                 mpv_hook_continue(mpv, hook.id)
             case MPV_EVENT_FILE_LOADED:
@@ -543,6 +664,7 @@ final class Player {
                         }
                         self.position = 0
                         self.lastSavedSecond = -1
+                        self.applyEqualizer()
                         // On the TV, the next video goes there too.
                         if let cast = self.activeCast, let path {
                             if hasVideo {
@@ -559,7 +681,7 @@ final class Player {
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
                         // Played to the end: mark it finished (periodic saves stop a few seconds short).
-                        if reason == MPV_END_FILE_REASON_EOF, let item = self.loadedItem, item.kind != .music {
+                        if reason == MPV_END_FILE_REASON_EOF, let item = self.loadedItem, !item.isMusic {
                             let length = self.duration > 0 ? self.duration : item.duration
                             self.library?.savePosition(length, duration: length, for: item, publish: true)
                             self.startTimes.set(nil, for: item.path)
@@ -635,6 +757,8 @@ final class Player {
             if let index = value as? Int, index >= 0, !queue.isEmpty { queueIndex = index }
         case "chapter":
             chapterIndex = (value as? Int).flatMap { $0 >= 0 ? $0 : nil }
+        case "audio-params/samplerate": fileSampleRate = value as? Int
+        case "audio-out-params/samplerate": refreshDeviceSampleRate()
         default: break
         }
         nowPlaying?.update()
@@ -661,6 +785,16 @@ final class Player {
         }
         return (parts.joined(separator: " · "), video != nil)
     }
+}
+
+/// File paths, shared between the main thread and mpv's event thread.
+final class PathSet: @unchecked Sendable {
+    private var paths: Set<String> = []
+    private let lock = NSLock()
+
+    func replace(with paths: Set<String>) { lock.withLock { self.paths = paths } }
+    func insert(_ more: [String]) { lock.withLock { paths.formUnion(more) } }
+    func contains(_ path: String) -> Bool { lock.withLock { paths.contains(path) } }
 }
 
 /// Start times by file path, shared between the main thread and mpv's event thread.

@@ -34,7 +34,7 @@ struct HomeView: View {
                             ForEach(index.shows.prefix(12)) { show in
                                 NavigationLink(value: ShowRef(id: show.id)) {
                                     VStack(alignment: .leading, spacing: 8) {
-                                        VideoStill(item: show.episodes[0])
+                                        ShowArtwork(show: show)
                                         Text(show.title).font(.callout.weight(.semibold)).lineLimit(1)
                                     }
                                     .frame(width: 240)
@@ -99,6 +99,7 @@ struct JumpBackInCard: View {
         switch item.kind {
         case .episode: "Episode"
         case .audiobook: "Audiobook"
+        case .homeVideo: "Home Video"
         default: "Movie"
         }
     }

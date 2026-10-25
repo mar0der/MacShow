@@ -57,3 +57,15 @@ struct AudiobookTests {
         #expect(try database.bookmarks().isEmpty)
     }
 }
+
+struct BookAuthorTests {
+    @Test func groupsByAuthorWithUnknownLast() {
+        func book(_ title: String, _ author: String?) -> Book {
+            Book(id: title, title: title, author: author, artworkKey: nil, parts: [])
+        }
+        let groups = Book.byAuthor([book("Zeta", "Ann"), book("Untitled", nil), book("Alpha", "Ann"), book("Dune", "Frank Herbert"), book("Blank", " ")])
+        #expect(groups.map(\.author) == ["Ann", "Frank Herbert", nil])
+        #expect(groups[0].books.map(\.title) == ["Alpha", "Zeta"])
+        #expect(groups[2].books.map(\.title) == ["Blank", "Untitled"])
+    }
+}

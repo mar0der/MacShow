@@ -8,13 +8,14 @@ import AppKit
 /// - With a video on screen: ← → skip 10 seconds (⇧ for 30), ↑ ↓ volume,
 ///   , . step a frame, F full screen, M mute, S next subtitles, Esc leaves
 ///   full screen, then shrinks the video into a corner of the library.
+///   Scrolling over the video changes the volume.
 @MainActor
 enum VideoScreen {
     /// The window showing the video, set by the video player while it's on screen.
     static weak var window: NSWindow?
     /// Full screen was entered for the video, so closing the video leaves it.
     private static var enteredFullScreen = false
-    private static var monitor: Any?
+    private static var monitors: [Any] = []
 
     static var isFullScreen: Bool { window?.styleMask.contains(.fullScreen) == true }
 
@@ -31,10 +32,15 @@ enum VideoScreen {
     }
 
     static func installKeys(for player: Player) {
-        guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            MainActor.assumeIsolated { handle(event, player: player) } ? nil : event
-        }
+        guard monitors.isEmpty else { return }
+        monitors = [
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                MainActor.assumeIsolated { handle(event, player: player) } ? nil : event
+            },
+            NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                MainActor.assumeIsolated { scroll(event, player: player) } ? nil : event
+            },
+        ].compactMap { $0 }
     }
 
     private static func handle(_ event: NSEvent, player: Player) -> Bool {
@@ -66,6 +72,21 @@ enum VideoScreen {
             default: return false
             }
         }
+        NotificationCenter.default.post(name: activity, object: nil)
+        return true
+    }
+
+    /// Up raises the volume: the direction the wheel or fingers move, whatever
+    /// the natural-scrolling setting. A trackpad sends many small steps, a mouse
+    /// wheel one per notch (5%).
+    private static func scroll(_ event: NSEvent, player: Player) -> Bool {
+        guard player.isVideo, !player.isVideoMinimized, let window, event.window === window,
+              abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX)
+        else { return false }
+        let delta = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
+        // At most 5% per step, so a fast flick can't jump to full volume.
+        let change = min(5, max(-5, event.hasPreciseScrollingDeltas ? delta * 0.25 : delta * 5))
+        player.volume = min(100, max(0, player.volume + change))
         NotificationCenter.default.post(name: activity, object: nil)
         return true
     }

@@ -5,6 +5,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             LibrarySettings().tabItem { Label("Library", systemImage: "folder") }
+            PlaybackSettings().tabItem { Label("Playback", systemImage: "hifispeaker") }
             ContentSettings().tabItem { Label("Content", systemImage: "eye.slash") }
             DuplicatesSettings().tabItem { Label("Duplicates", systemImage: "square.on.square") }
             AboutView().tabItem { Label("About", systemImage: "info.circle") }
@@ -17,23 +18,37 @@ struct SettingsView: View {
 struct LibrarySettings: View {
     @Environment(Library.self) private var library
     @State private var selection: WatchedFolder.ID?
+    @State private var addingNetworkFolder = false
     @AppStorage(Library.fetchArtworkKey) private var fetchArtwork = true
+    @AppStorage(ArtworkFetcher.tmdbKeyDefault) private var tmdbKey = ""
 
     var body: some View {
         Form {
             Section {
                 List(library.folders, selection: $selection) { folder in
                     HStack {
-                        Label(folder.path.replacingOccurrences(of: Library.realHomeDirectory.path, with: "~"), systemImage: "folder")
+                        Label(folder.path.replacingOccurrences(of: Library.realHomeDirectory.path, with: "~"),
+                              systemImage: folder.isOnNetworkShare ? "server.rack" : "folder")
                         Spacer()
                         if library.offlineFolders.contains(folder.path) {
                             Text("Offline").font(.caption).foregroundStyle(.secondary)
+                            if let share = folder.remountURL.flatMap(URL.init(string:)) {
+                                Button("Connect") { NSWorkspace.shared.open(share) }
+                                    .controlSize(.small)
+                                    .help("Connect to \(share.host ?? "the server") again")
+                            }
                         }
                     }
                 }
                 .frame(minHeight: 140)
                 HStack {
-                    Button { addFolder() } label: { Image(systemName: "plus") }.help("Add Folder")
+                    Menu {
+                        Button("Add Folder…") { addFolder() }
+                        Button("Add Network Folder…") { addingNetworkFolder = true }
+                    } label: { Image(systemName: "plus") }
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("Add Folder")
                     Button {
                         if let folder = library.folders.first(where: { $0.id == selection }) { library.removeFolder(folder) }
                     } label: { Image(systemName: "minus") }
@@ -46,7 +61,7 @@ struct LibrarySettings: View {
             } header: {
                 Text("Watched Folders")
             } footer: {
-                Text("New files in these folders are added automatically. Folders on an external drive come back when it's plugged in.")
+                Text("New files in these folders are added automatically. Folders on an external drive come back when it's plugged in; folders on a network share reconnect by themselves and are rescanned every 15 minutes.")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -64,8 +79,19 @@ struct LibrarySettings: View {
                 Text("Looks up covers for albums that have none on the iTunes Store. Only album and artist names are sent.")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            Section {
+                SecureField("TMDB API key", text: $tmdbKey, prompt: Text("Optional"))
+            } footer: {
+                Text("Posters and wide artwork for movies and shows in Get Info › Find Artwork Online, from themoviedb.org. A free key comes with a TMDB account (Settings › API). Without one, Wikipedia is used.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $addingNetworkFolder) { NetworkFolderSheet() }
+        #if DEBUG
+        .onAppear { if UserDefaults.standard.bool(forKey: "debugNetworkSheet") { addingNetworkFolder = true } }
+        #endif
     }
 
     private func addFolder() {
@@ -76,6 +102,35 @@ struct LibrarySettings: View {
         panel.prompt = "Add to Library"
         guard panel.runModal() == .OK else { return }
         panel.urls.forEach(library.addFolder)
+    }
+}
+
+/// Bit-perfect output.
+struct PlaybackSettings: View {
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        @Bindable var player = player
+        Form {
+            Section {
+                Toggle("Bit-perfect output", isOn: $player.exclusiveAudio)
+                if let file = player.fileSampleRate {
+                    LabeledContent("Now playing") {
+                        let device = player.deviceSampleRate
+                        Text("file \(Self.kHz(file)), device \(device.map(Self.kHz) ?? "–")" + (device == file ? " ✓" : " (resampled by macOS)"))
+                            .foregroundStyle(device == file ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
+                    }
+                }
+            } footer: {
+                Text("macOS normally resamples everything to the rate set in Audio MIDI Setup. With this on, MacShow takes the audio device for itself and switches it to each file's own sample rate, so lossless and hi-res files reach your DAC untouched (keep the volume at 100% and the equalizer off for that). Other apps can't play sound while MacShow is playing.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    static func kHz(_ rate: Int) -> String {
+        String(format: "%g kHz", Double(rate) / 1000)
     }
 }
 
@@ -114,6 +169,33 @@ struct ContentSettings: View {
                 Text("Sorted Folders")
             } footer: {
                 Text("Personal: videos show under Home Videos. Adult: kept out of Home, search and every list; shown in their own section after Touch ID (View › Show Adult Content, ⇧⌘A), and hidden again at every launch. Never Scan: not in the library at all.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            let locked = library.index.itemsByID.values.filter(\.isProtected).sorted { $0.path < $1.path }
+            Section {
+                if locked.isEmpty {
+                    Label("None. Everything in your library plays.", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                }
+                ForEach(locked) { item in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title).lineLimit(1)
+                            Text(item.path.replacingOccurrences(of: Library.realHomeDirectory.path, with: "~"))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        }
+                        Spacer()
+                        Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: { Image(systemName: "magnifyingglass") }
+                            .buttonStyle(.borderless)
+                            .help("Show in Finder")
+                    }
+                }
+                if !locked.isEmpty {
+                    Button("Hide These from the Library") { locked.forEach { library.setRule(.excluded, for: $0.url) } }
+                }
+            } header: {
+                Text("Copy-Protected Files (\(locked.count))")
+            } footer: {
+                Text("These are locked to Apple's apps with DRM: old iTunes Store movies and TV shows, Audible books, songs saved from an Apple Music subscription. No other player can open them. What you bought is a licence that the store can withdraw, so where you can, download a DRM-free copy (iTunes music purchases since 2009 are DRM-free) and keep it in a watched folder.")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

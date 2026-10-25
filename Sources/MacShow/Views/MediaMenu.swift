@@ -6,6 +6,7 @@ struct MediaMenu: View {
     let items: [MediaItem]
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let playable = items.filter { !$0.isProtected }
@@ -21,9 +22,11 @@ struct MediaMenu: View {
             }
         }
         Divider()
+        Button("Get Info…") { openWindow(id: "info", value: items.compactMap(\.id)) }
         Button("Show in Finder") {
             NSWorkspace.shared.activateFileViewerSelecting(items.prefix(20).map(\.url))
         }
+        CategoryMenu(items: items)
         FolderRuleMenu(items: items, classify: false)
     }
 
@@ -63,5 +66,31 @@ struct FolderRuleMenu: View {
 
     private func option(_ title: String, _ kind: FolderRule.Kind?, current: FolderRule.Kind?, folder: URL) -> some View {
         Toggle(title, isOn: Binding(get: { current == kind }, set: { _ in library.setRule(kind, for: folder) }))
+    }
+}
+
+/// Move To: the category items are listed under. Videos move between Movies,
+/// TV Shows, Home Videos and Music Videos; audio between Songs and Audiobooks.
+struct CategoryMenu: View {
+    let items: [MediaItem]
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        if !items.isEmpty {
+            let isVideo = items.allSatisfy(\.isVideo)
+            let choices: [(String, MediaItem.Kind)] = isVideo
+                ? [("Movies", .movie), ("TV Shows", .episode), ("Home Videos", .homeVideo), ("Music Videos", .musicVideo)]
+                : [("Songs", .music), ("Audiobooks", .audiobook)]
+            let current = Set(items.map(\.kind))
+            Menu("Move To") {
+                ForEach(choices, id: \.1) { title, kind in
+                    Toggle(title, isOn: Binding(get: { current == [kind] }, set: { _ in library.setCategory(kind, for: items) }))
+                }
+                if items.contains(where: { library.edits[$0.path]?.kind != nil }) {
+                    Divider()
+                    Button("Where MacShow Puts It") { library.setCategory(nil, for: items) }
+                }
+            }
+        }
     }
 }

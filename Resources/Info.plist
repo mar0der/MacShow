@@ -28,8 +28,6 @@
 	<string>Open source under the MIT license.</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>MacShow sends videos to your Apple TV over the local network when you use AirPlay.</string>
 	<!-- Formats macOS doesn't define itself, so Finder knows they're audio or video. -->
 	<key>UTImportedTypeDeclarations</key>
 	<array>
@@ -132,6 +130,12 @@
 				<string>public.audiovisual-content</string>
 			</array>
 		</dict>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>MacShow looks for file servers in your home (a NAS, or Macs and PCs sharing folders) so you can add their media, and sends videos to your Apple TV (AirPlay) or smart TV (DLNA) when you cast to them.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_smb._tcp</string>
 	</array>
 </dict>
 </plist>

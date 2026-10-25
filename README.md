@@ -17,6 +17,23 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
   browse; Up Next at the end of an episode, Skip Intro on intro chapters.
 - **Audiobooks.** Chaptered M4B files or folders of MP3s, chapters, speed,
   sleep timer, bookmarks, resume to the second.
+- **Network folders.** Add folders from a NAS or shared Macs and PCs (Settings ›
+  Library › + › Add Network Folder); they reconnect by themselves and are rescanned
+  every 15 minutes.
+- **Sorted the way you want.** Right-click › Move To: Movies, TV Shows, Home Videos,
+  Music Videos. Music videos also sit in Songs, where they play as audio.
+- **Artwork.** Get Info › Find Artwork Online (TMDB with your own key, Deezer, the
+  iTunes Store, Wikipedia); Artists › Find Pictures gives every artist a photo.
+- **TV niceties.** Mark where a show's recap ends and its credits start (right-click
+  the video › Recap & Credits): Skip Recap, Up Next at the credits, another show
+  after the last episode. Subtitle files next to a video load by themselves.
+- **Yours to keep.** Edit titles, artists and artwork with Get Info (stored in
+  MacShow, never written into your files). Import playlists from the Music app's
+  exported library or M3U, export any playlist as M3U. Settings › Content lists
+  any copy-protected (DRM) files and what they are.
+- **Sound.** Bit-perfect output that switches your DAC to each file's sample rate
+  (Settings › Playback), a 10-band equalizer with presets and per-album settings
+  (⌥⌘E), drag to reorder Up Next. Audiobooks sort by title, author or recently played.
 - **Content kept apart.** Right-click a video to mark its folder as Personal
   (Home Videos), Adult (hidden everywhere; its own section after Touch ID, locked
   again at every launch) or Never Scan, or hide single files. Settings › Content
@@ -29,12 +46,15 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
 | Space | Play / pause (anywhere but a text field) |
 | ← → | Back / forward 10 seconds, ⇧ for 30 (video) |
 | ↑ ↓ | Volume (video); ⌘↑ ⌘↓ anywhere |
+| Scroll / two-finger swipe | Volume (over a video) |
 | ⌘← ⌘→ | Previous / next |
+| Click | Show / hide the video controls |
 | F or double-click | Full screen (video) |
+| Right-click | Subtitles, audio track, speed, chapters, Fill Window… (video) |
 | M | Mute (video) |
 | S | Next subtitles (video) |
 | , . | Step a frame back / forward (video) |
-| Esc | Leave full screen, then shrink the video to a corner and keep browsing |
+| Esc | Leave full screen, then back to the library (an episode opens its show) with the video in a corner |
 | ⇧⌘A | Show / hide Adult content |
 
 See the [roadmap](ROADMAP.md) for the plan and what's left.

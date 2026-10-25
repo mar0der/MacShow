@@ -212,3 +212,22 @@ struct FolderRuleTests {
         #expect(!unlocked.recentlyAdded.contains { $0.path.hasPrefix("/Movies/X/") })
     }
 }
+
+struct NetworkFolderTests {
+    @Test func remembersTheShareAddress() throws {
+        let database = try LibraryDatabase.inMemory()
+        try database.addWatchedFolder(WatchedFolder(path: "/Volumes/Media/Music", remountURL: "smb://nas.local/Media"))
+        try database.addWatchedFolder(WatchedFolder(path: "/Volumes/Media/Movies"))
+        try database.setRemountURL("smb://nas.local/Media", forFolder: "/Volumes/Media/Movies")
+        try database.addWatchedFolder(WatchedFolder(path: "/Users/me/Music"))
+
+        let folders = try database.watchedFolders()
+        #expect(folders.filter(\.isOnNetworkShare).map(\.path) == ["/Volumes/Media/Movies", "/Volumes/Media/Music"])
+        #expect(folders.first { $0.path == "/Users/me/Music" }?.remountURL == nil)
+    }
+
+    @Test func localFoldersHaveNoShareAddress() throws {
+        let folder = FileManager.default.temporaryDirectory
+        #expect((try folder.resourceValues(forKeys: [.volumeURLForRemountingKey])).volumeURLForRemounting == nil)
+    }
+}

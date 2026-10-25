@@ -34,7 +34,8 @@ struct VideoStill: View {
     @State private var stillKey: String?
 
     var body: some View {
-        ArtworkView(key: item.artworkKey ?? stillKey, title: item.title, cornerRadius: cornerRadius, aspectRatio: 16 / 9)
+        // Episodes show their own still; a poster chosen for them is the show's.
+        ArtworkView(key: (item.kind == .episode ? nil : item.artworkKey) ?? stillKey, title: item.title, cornerRadius: cornerRadius, aspectRatio: 16 / 9)
             .opacity(library.isAvailable(item) ? 1 : 0.4)
             .overlay {
                 if !library.isAvailable(item) {
@@ -82,7 +83,7 @@ struct MovieTile: View {
     @Environment(Player.self) private var player
 
     var body: some View {
-        Button { player.play([movie]) } label: {
+        Button { player.play([movie], showVideo: true) } label: {
             VStack(alignment: .leading, spacing: 8) {
                 VideoStill(item: movie)
                     .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
@@ -112,12 +113,16 @@ struct VideoMenu: View {
     let queue: [MediaItem]
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let start = queue.firstIndex(of: item) ?? 0
-        Button("Play") { player.play(queue, startAt: start) }
+        Button("Play") { player.play(queue, startAt: start, showVideo: true) }
         if let saved = item.id.flatMap({ library.positions[$0] }), saved.isResumable {
-            Button("Play from Beginning") { player.play(queue, startAt: start, fromBeginning: true) }
+            Button("Play from Beginning") { player.play(queue, startAt: start, fromBeginning: true, showVideo: true) }
+        }
+        if item.kind == .musicVideo {
+            Button("Play as Song") { player.play(queue, startAt: start) }
         }
         Divider()
         if item.id.flatMap({ library.positions[$0] })?.isFinished == true {
@@ -126,8 +131,10 @@ struct VideoMenu: View {
             Button("Mark as Watched") { library.savePosition(item.duration, duration: item.duration, for: item) }
         }
         Divider()
+        Button("Get Info…") { openWindow(id: "info", value: [item.id].compactMap { $0 }) }
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
         Divider()
+        CategoryMenu(items: [item])
         FolderRuleMenu(items: [item])
     }
 }
@@ -137,6 +144,7 @@ struct VideoMenu: View {
 struct ShowsView: View {
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let shows = library.index.shows
@@ -149,7 +157,7 @@ struct ShowsView: View {
                         ForEach(shows) { show in
                             NavigationLink(value: ShowRef(id: show.id)) {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    VideoStill(item: show.episodes[0])
+                                    ShowArtwork(show: show)
                                         .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(show.title).font(.callout.weight(.semibold)).lineLimit(1)
@@ -161,6 +169,7 @@ struct ShowsView: View {
                             .buttonStyle(.plain)
                             .contextMenu {
                                 Button("Play") { player.play(show.episodes) }
+                                Button("Get Info…") { openWindow(id: "info", value: show.episodes.compactMap(\.id)) }
                                 Divider()
                                 FolderRuleMenu(items: show.episodes)
                             }
@@ -176,6 +185,19 @@ struct ShowsView: View {
     private func seasonSummary(_ show: Show) -> String {
         let seasons = show.seasons.count
         return "\(seasons) season\(seasons == 1 ? "" : "s") · \(show.episodes.count) episodes"
+    }
+}
+
+/// A show's poster when one was chosen (Get Info), else its first episode's still.
+struct ShowArtwork: View {
+    let show: Show
+
+    var body: some View {
+        if let key = show.artworkKey {
+            ArtworkView(key: key, title: show.title, aspectRatio: 16 / 9)
+        } else {
+            VideoStill(item: show.episodes[0])
+        }
     }
 }
 

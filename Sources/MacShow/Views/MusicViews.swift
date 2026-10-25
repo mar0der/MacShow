@@ -188,9 +188,12 @@ struct TrackRow: View {
 
 struct ArtistsView: View {
     @Environment(Library.self) private var library
+    /// Off: only artists you have albums or songs by. On: also everyone featured on them.
+    @AppStorage("showFeaturedArtists") private var showFeatured = false
+    @State private var changingPicture: Artist?
 
     var body: some View {
-        let artists = library.index.artists
+        let artists = library.index.artists.filter { showFeatured || !$0.isFeaturedOnly }
         Group {
             if artists.isEmpty {
                 EmptyLibraryView(title: "No Artists", icon: "music.mic")
@@ -200,14 +203,26 @@ struct ArtistsView: View {
                         ForEach(artists) { artist in
                             NavigationLink(value: ArtistRef(id: artist.id)) {
                                 VStack(spacing: 8) {
-                                    ArtworkView(key: artist.artworkKey, title: artist.name, cornerRadius: 100)
-                                        .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
-                                    Text(artist.name).font(.callout.weight(.semibold)).lineLimit(1)
+                                    ArtistAvatar(artist: artist)
+                                    VStack(spacing: 2) {
+                                        Text(artist.name).font(.callout.weight(.semibold)).lineLimit(1)
+                                        if artist.isFeaturedOnly {
+                                            Text("Featured on \(artist.appearances.count) song\(artist.appearances.count == 1 ? "" : "s")")
+                                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                    }
                                 }
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .contextMenu { MediaMenu(items: artist.songs) }
+                            .contextMenu {
+                                MediaMenu(items: artist.isFeaturedOnly ? artist.appearances : artist.songs)
+                                Divider()
+                                Button("Change Picture…") { changingPicture = artist }
+                                if library.artistImages[artist.id] != nil {
+                                    Button("Use Album Cover") { library.setPicture(nil, for: artist) }
+                                }
+                            }
                         }
                     }
                     .padding(28)
@@ -215,20 +230,66 @@ struct ArtistsView: View {
             }
         }
         .navigationTitle("Artists")
+        .sheet(item: $changingPicture) { artist in
+            ArtworkSearchView(kind: .artist, term: artist.name) { data in
+                if let key = library.artwork.store(data) { library.setPicture(key, for: artist) }
+            }
+        }
+        .toolbar {
+            if let progress = library.findingArtistPictures {
+                ProgressView(value: Double(progress.done), total: Double(progress.total))
+                    .frame(width: 80)
+                    .help("Finding pictures: \(progress.done) of \(progress.total)")
+            } else {
+                Button { library.findArtistPictures(for: artists) } label: { Label("Find Pictures", systemImage: "person.crop.circle.badge.plus") }
+                    .help("Find a photo for every artist without one (you can change any later)")
+                    .disabled(!artists.contains { library.picture(of: $0) == nil })
+            }
+            Toggle(isOn: $showFeatured) { Label("Featured Artists", systemImage: "person.2") }
+                .toggleStyle(.button)
+                .help(showFeatured ? "Hide artists who are only featured on songs" : "Also show artists featured on songs")
+        }
+    }
+}
+
+/// An artist's round picture. Someone who is only ever featured gets their
+/// initials, with the artist they appear with in a small circle at the corner.
+struct ArtistAvatar: View {
+    let artist: Artist
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        ArtworkView(key: library.picture(of: artist), title: artist.name, cornerRadius: 100)
+            .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
+            .overlay(alignment: .bottomTrailing) {
+                if let lead = artist.appearsWith, let leadArtist = library.index.artists.first(where: { $0.id == lead.lowercased() }) {
+                    GeometryReader { geometry in
+                        ArtworkView(key: library.picture(of: leadArtist), title: leadArtist.name, cornerRadius: 100)
+                            .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 3))
+                            .frame(width: geometry.size.width * 0.36, height: geometry.size.width * 0.36)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    }
+                    .help("Appears with \(leadArtist.name)")
+                }
+            }
     }
 }
 
 struct ArtistDetailView: View {
     let artist: Artist
+    @Environment(Library.self) private var library
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 CollectionHeader(
-                    artworkKey: artist.artworkKey, title: artist.name, subtitle: "",
-                    details: [artist.albums.isEmpty ? nil : "\(artist.albums.count) albums", "\(artist.songs.count) songs"]
+                    artworkKey: library.picture(of: artist), title: artist.name,
+                    subtitle: artist.appearsWith.map { "Featured with \($0)" } ?? "",
+                    details: [artist.albums.isEmpty ? nil : "\(artist.albums.count) albums",
+                              artist.songs.isEmpty ? nil : "\(artist.songs.count) songs",
+                              artist.appearances.isEmpty ? nil : "Featured on \(artist.appearances.count) song\(artist.appearances.count == 1 ? "" : "s")"]
                         .compactMap { $0 }.joined(separator: " · "),
-                    circular: true, items: artist.songs
+                    circular: true, items: artist.songs.isEmpty ? artist.appearances : artist.songs
                 )
                 if !artist.albums.isEmpty {
                     Text("Albums").font(.title3.weight(.semibold))
@@ -236,8 +297,14 @@ struct ArtistDetailView: View {
                         ForEach(artist.albums) { AlbumTile(album: $0) }
                     }
                 }
-                Text("Songs").font(.title3.weight(.semibold))
-                TrackList(tracks: artist.songs, numbered: false)
+                if !artist.songs.isEmpty {
+                    Text("Songs").font(.title3.weight(.semibold))
+                    TrackList(tracks: artist.songs, showsArtist: artist.songs.contains { $0.artist != artist.name }, numbered: false)
+                }
+                if !artist.appearances.isEmpty {
+                    Text("Featured On").font(.title3.weight(.semibold))
+                    TrackList(tracks: artist.appearances, showsArtist: true, numbered: false)
+                }
             }
             .padding(28)
         }

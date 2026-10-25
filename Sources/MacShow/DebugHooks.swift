@@ -6,6 +6,9 @@ import SwiftUI
 ///   -debugOpenAlbum "Kamikaze"   pushes that album's page
 ///   -debugPlayAlbum "Kamikaze"   starts playing it
 ///   -debugOpenWindow mini        opens a window by id
+///   -debugInfoAlbum "Kamikaze"   opens Get Info for its tracks
+///   -debugInfoTitle "Iron Man"   opens Get Info for items with that title
+///   -debugMoveQueue "4,1"        moves queue entry 4 before 1 and logs both orders
 ///   -debugShow "Name" -debugOpenShow YES / -debugPlayShow YES
 struct DebugHooks: ViewModifier {
     @Binding var path: NavigationPath
@@ -48,13 +51,25 @@ struct DebugHooks: ViewModifier {
             }
         }
         if let album = album("debugPlayAlbum") { player.play(album.tracks) }
+        if let move = defaults.string(forKey: "debugMoveQueue")?.split(separator: ",").compactMap({ Int($0) }), move.count == 2 {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                player.moveQueueItem(from: [move[0]], to: move[1])
+                let mpvOrder = (0..<player.queue.count).map { player.string("playlist/\($0)/filename").map { URL(fileURLWithPath: $0).lastPathComponent } ?? "-" }
+                FileHandle.standardError.write(Data("queue: \(player.queue.map(\.url.lastPathComponent).prefix(6))\nmpv:   \(mpvOrder.prefix(6))\nplaying index \(player.queueIndex ?? -1) = \(player.string("playlist-pos") ?? "-")\n".utf8))
+            }
+        }
         if let id = defaults.string(forKey: "debugOpenWindow") { openWindow(id: id) }
+        if let album = album("debugInfoAlbum") { openWindow(id: "info", value: album.tracks.compactMap(\.id)) }
+        if let title = defaults.string(forKey: "debugInfoTitle") {
+            openWindow(id: "info", value: library.index.itemsByID.values.filter { $0.title == title }.compactMap(\.id))
+        }
         if defaults.bool(forKey: "debugOpenSettings") { openSettings() }
         if defaults.bool(forKey: "debugLogPlayer") {
             Task {
                 while true {
                     try? await Task.sleep(for: .seconds(2))
-                    FileHandle.standardError.write(Data("player: hasMedia=\(player.hasMedia) isVideo=\(player.isVideo) paused=\(player.isPaused) pos=\(Int(player.position))/\(Int(player.duration)) index=\(player.queueIndex ?? -1) format=\(player.formatInfo) vo=\(player.string("vo-configured") ?? "-") out=\(player.string("video-out-params/dw") ?? "-")x\(player.string("video-out-params/dh") ?? "-") layer=\(player.layer.drawableSize) inWindow=\(player.layer.superlayer != nil)\n".utf8))
+                    FileHandle.standardError.write(Data("player: hasMedia=\(player.hasMedia) isVideo=\(player.isVideo) paused=\(player.isPaused) pos=\(Int(player.position))/\(Int(player.duration)) index=\(player.queueIndex ?? -1) format=\(player.formatInfo) vo=\(player.string("vo-configured") ?? "-") out=\(player.string("video-out-params/dw") ?? "-")x\(player.string("video-out-params/dh") ?? "-") layer=\(player.layer.drawableSize) inWindow=\(player.layer.superlayer != nil) af=\(player.string("af") ?? "-")\n".utf8))
                 }
             }
         }
