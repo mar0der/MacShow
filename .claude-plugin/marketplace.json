@@ -1,0 +1,11 @@
+{
+  "name": "macshow",
+  "owner": { "name": "Petar Petkov" },
+  "plugins": [
+    {
+      "name": "macshow",
+      "source": "./claude-plugin",
+      "description": "Control MacShow from Claude: search, play, queue, playlists and categories over MCP."
+    }
+  ]
+}

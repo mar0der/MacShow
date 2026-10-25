@@ -86,7 +86,8 @@ public final class MCPServer {
         }
         do {
             let value = try await tool.run(arguments)
-            return answer(String(decoding: Self.encode(value, pretty: true) ?? Data(), as: UTF8.self), error: false)
+            // Compact: agents pay for every character.
+            return answer(String(decoding: Self.encode(value) ?? Data(), as: UTF8.self), error: false)
         } catch let error as MCPToolError {
             return answer(error.message, error: true)
         } catch {

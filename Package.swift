@@ -23,6 +23,8 @@ let package = Package(
             name: "MacShow",
             dependencies: ["MacShowCore", .product(name: "MPVKit", package: "MPVKit")]
         ),
+        // Bridge for MCP apps that start a program: stdin/stdout ↔ MacShow's agent endpoint.
+        .executableTarget(name: "macshow-mcp"),
         .testTarget(
             name: "MacShowCoreTests",
             dependencies: ["MacShowCore"],

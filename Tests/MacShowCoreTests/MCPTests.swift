@@ -34,7 +34,7 @@ struct MCPServerTests {
         let server = server()
         let echo = try await call(server, #"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"text":"hi"}}}"#)
         #expect(echo["result"]?["isError"]?.bool == false)
-        #expect(echo["result"]?["content"]?.array?.first?["text"]?.string?.contains("\"said\" : \"hi\"") == true)
+        #expect(echo["result"]?["content"]?.array?.first?["text"]?.string == #"{"said":"hi"}"#)
 
         let fail = try await call(server, #"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"fail"}}"#)
         #expect(fail["result"]?["isError"]?.bool == true)
@@ -67,9 +67,8 @@ struct AgentHTTPServerTests {
     @Test func answersOverHTTP() async throws {
         let port = UInt16.random(in: 40000...49000)
         let server = AgentHTTPServer(port: port, token: "secret") { body in body }
-        try server.start()
+        try await server.start()
         defer { server.stop() }
-        try await Task.sleep(for: .milliseconds(200))
         func post(token: String?, origin: String? = nil) async throws -> (Int, Data) {
             var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/mcp")!)
             request.httpMethod = "POST"
@@ -83,5 +82,8 @@ struct AgentHTTPServerTests {
         #expect(ok.0 == 200 && ok.1 == Data("ping".utf8))
         #expect(try await post(token: "wrong").0 == 401)
         #expect(try await post(token: "secret", origin: "https://evil.example").0 == 403)
+
+        // A second server can't take the same port.
+        await #expect(throws: (any Error).self) { try await AgentHTTPServer(port: port, token: "x") { _ in nil }.start() }
     }
 }

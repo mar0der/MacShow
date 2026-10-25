@@ -7,6 +7,7 @@ struct SettingsView: View {
             LibrarySettings().tabItem { Label("Library", systemImage: "folder") }
             PlaybackSettings().tabItem { Label("Playback", systemImage: "hifispeaker") }
             ContentSettings().tabItem { Label("Content", systemImage: "eye.slash") }
+            AgentSettings().tabItem { Label("Agents", systemImage: "sparkles") }
             DuplicatesSettings().tabItem { Label("Duplicates", systemImage: "square.on.square") }
             AboutView().tabItem { Label("About", systemImage: "info.circle") }
         }

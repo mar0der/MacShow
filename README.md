@@ -57,6 +57,19 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
 | Esc | Leave full screen, then back to the library (an episode opens its show) with the video in a corner |
 | ⇧⌘A | Show / hide Adult content |
 
+### Control MacShow from Claude
+
+Turn on **MacShow › Settings › Agents**, then add MacShow to Claude Code:
+
+```
+/plugin install macshow --marketplace mar0der/MacShow
+```
+
+or run the line Settings › Agents shows (`claude mcp add macshow -- …/macshow-mcp`). Claude
+Desktop and other MCP apps use the same `macshow-mcp` bridge inside the app. Agents can search,
+play, queue, make playlists and sort the library (a read-only switch limits them to looking and
+playing); they only reach MacShow on this Mac, with a token, and never see Adult folders.
+
 See the [roadmap](ROADMAP.md) for the plan and what's left.
 
 ## Build and run

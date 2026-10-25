@@ -13,12 +13,14 @@ CONFIG="${1:-release}"
 ARCHS=()
 [ "$CONFIG" = release ] && ARCHS=(--arch arm64 --arch x86_64)
 swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --product MacShow
+swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --product macshow-mcp
 BIN_DIR="$(swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --show-bin-path)"
 
 APP=build/MacShow.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/MacShow" "$APP/Contents/MacOS/MacShow"
+cp "$BIN_DIR/macshow-mcp" "$APP/Contents/MacOS/macshow-mcp"  # the agent bridge, started by MCP apps
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -R Resources/Licenses "$APP/Contents/Resources/"  # notices and license texts the bundled libraries require
@@ -28,5 +30,7 @@ find "$BIN_DIR" -maxdepth 1 -name '*.bundle' ! -name '*Tests.bundle' -exec cp -R
 if [ -z "${SIGN_IDENTITY:-}" ]; then
     SIGN_IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
 fi
+# The bridge first (it runs outside the sandbox, started by other apps), then the app around it.
+codesign --force --sign "${SIGN_IDENTITY:--}" "$APP/Contents/MacOS/macshow-mcp"
 codesign --force --sign "${SIGN_IDENTITY:--}" --entitlements Resources/MacShow.entitlements "$APP"
 echo "$APP"

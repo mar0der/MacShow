@@ -22,6 +22,7 @@ struct MacShowApp: App {
         _library = State(initialValue: library)
         _player = State(initialValue: player)
         VideoScreen.installKeys(for: player)
+        AgentControl.shared.configure(library: library, player: player)
         // At launch, not when a window appears: the app can be opened for a file
         // from Finder without its main window.
         library.start()

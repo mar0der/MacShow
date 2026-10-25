@@ -412,6 +412,10 @@ final class Player {
         lastExternalOpen = Date()
     }
 
+    func setPaused(_ paused: Bool) {
+        if paused != isPaused { togglePause() }
+    }
+
     func togglePause() {
         if airPlay.isActive { return airPlay.togglePause() }
         command("cycle", "pause")

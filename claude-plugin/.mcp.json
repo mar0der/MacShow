@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "macshow": {
+      "command": "${MACSHOW_APP:-/Applications/MacShow.app}/Contents/MacOS/macshow-mcp"
+    }
+  }
+}

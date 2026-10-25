@@ -114,7 +114,12 @@ Media on a NAS or on shared folders on other Macs and PCs in the house.
 - Keep scans light over the network: read only new and changed files and
   their tags, and make video stills in the background.
 
-### Proposed: Agent control (MCP)
+### Agent control (MCP) (first version done)
+
+Built: the MCP server in the app (Settings › Agents, a token, a read-only switch, a free port
+picked if 47321 is taken), the `macshow-mcp` bridge, and the Claude Code plugin
+(`claude-plugin/`, listed in `.claude-plugin/marketplace.json`). Still to do: App Intents, and
+artwork and subtitle tools. The original proposal:
 
 Let AI agents (Claude Code, Claude Desktop, others) run MacShow: find and play
 things, manage the queue and playlists, sort and tag the library, fetch artwork.

@@ -18,17 +18,32 @@ public final class AgentHTTPServer: @unchecked Sendable {
         self.handle = handle
     }
 
-    public func start() throws {
+    /// Returns once it's listening; throws if the port is taken.
+    public func start() async throws {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!)
-        parameters.allowLocalEndpointReuse = true
         let listener = try NWListener(using: parameters)
         listener.newConnectionHandler = { [weak self] connection in
             guard let self else { return connection.cancel() }
             connection.start(queue: self.queue)
             self.receive(on: connection, buffer: Data())
         }
-        listener.start(queue: queue)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    listener.stateUpdateHandler = nil
+                    continuation.resume()
+                case .failed(let error), .waiting(let error):
+                    listener.stateUpdateHandler = nil
+                    listener.cancel()
+                    continuation.resume(throwing: error)
+                default:
+                    break
+                }
+            }
+            listener.start(queue: queue)
+        }
         self.listener = listener
     }
 

@@ -1,0 +1,8 @@
+{
+  "name": "macshow",
+  "version": "1.0.0",
+  "description": "Control MacShow, the open-source player for your own music, movies, shows and audiobooks: search, play, queue, playlists, categories.",
+  "author": { "name": "Petar Petkov" },
+  "homepage": "https://github.com/mar0der/MacShow",
+  "license": "MIT"
+}
