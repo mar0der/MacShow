@@ -128,3 +128,25 @@ struct ShowMarkerTests {
         #expect(library.markers(for: a1) == nil)
     }
 }
+
+struct MediaDetailsTests {
+    @Test func readsMovieAndShowDetails() throws {
+        let movie = #"{"title":"Iron Man","release_date":"2008-04-30","runtime":126,"vote_average":7.7,"tagline":"Heroes aren't born.","overview":"Tony Stark...","genres":[{"name":"Action"}],"credits":{"cast":[{"name":"Robert Downey Jr.","character":"Tony Stark","profile_path":"/r.jpg"}],"crew":[{"name":"Jon Favreau","job":"Director"},{"name":"X","job":"Writer"}]},"backdrop_path":"/b.jpg"}"#
+        let iron = try #require(ArtworkFetcher.mediaDetails(from: Data(movie.utf8)))
+        #expect(iron.year == 2008 && iron.runtimeMinutes == 126 && iron.makers == ["Jon Favreau"])
+        #expect(iron.cast.first?.role == "Tony Stark" && iron.cast.first?.photo?.absoluteString == "https://image.tmdb.org/t/p/w185/r.jpg")
+        #expect(iron.backdrop?.absoluteString == "https://image.tmdb.org/t/p/w1280/b.jpg")
+
+        let show = #"{"name":"Yellowstone","first_air_date":"2018-06-20","number_of_seasons":5,"episode_run_time":[],"vote_average":0,"created_by":[{"name":"Taylor Sheridan"}],"overview":""}"#
+        let yellowstone = try #require(ArtworkFetcher.mediaDetails(from: Data(show.utf8)))
+        #expect(yellowstone.seasons == 5 && yellowstone.makers == ["Taylor Sheridan"])
+        #expect(yellowstone.rating == nil && yellowstone.overview == nil && yellowstone.runtimeMinutes == nil)
+    }
+
+    @Test func cachesDetails() throws {
+        let database = try LibraryDatabase.inMemory()
+        #expect(try database.cachedDetails("movie:x:0") == nil)
+        try database.cacheDetails(MediaDetails(title: "X", year: 2000), key: "movie:x:0")
+        #expect(try database.cachedDetails("movie:x:0")?.year == 2000)
+    }
+}

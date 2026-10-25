@@ -7,6 +7,7 @@ struct AlbumRef: Hashable { let id: String }
 struct ArtistRef: Hashable { let id: String }
 struct ShowRef: Hashable { let id: String }
 struct BookRef: Hashable { let id: String }
+struct MovieRef: Hashable { let id: Int64 }
 
 extension View {
     func libraryDestinations() -> some View {
@@ -21,6 +22,22 @@ extension View {
         }
         .navigationDestination(for: BookRef.self) { ref in
             Resolved(ref.id, in: \.books) { BookDetailView(book: $0) }.withPlayerBar()
+        }
+        .navigationDestination(for: MovieRef.self) { ref in
+            MovieDestination(id: ref.id).withPlayerBar()
+        }
+    }
+}
+
+private struct MovieDestination: View {
+    let id: Int64
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        if let movie = library.index.itemsByID[id] {
+            MovieDetailView(movie: movie)
+        } else {
+            ContentUnavailableView("No Longer in Your Library", systemImage: "questionmark.folder")
         }
     }
 }

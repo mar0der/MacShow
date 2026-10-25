@@ -428,6 +428,22 @@ public final class Library {
         writeQueue.async { try? database.clearPosition(for: id) }
     }
 
+    // MARK: Movie and show details
+
+    /// TMDB details for a movie or a show's episode (nil without a TMDB key, offline,
+    /// or not found). Looked up once, then kept.
+    public func details(for item: MediaItem) async -> MediaDetails? {
+        let isShow = item.kind == .episode
+        let key = isShow ? "tv:" + Show.id(for: item) : "movie:\(item.title.lowercased()):\(item.year ?? 0)"
+        let database = database
+        if let cached = try? database.cachedDetails(key) { return cached }
+        let fetcher = ArtworkFetcher(tmdbKey: UserDefaults.standard.string(forKey: ArtworkFetcher.tmdbKeyDefault))
+        let found = isShow ? await fetcher.showDetails(name: item.show ?? item.title)
+                           : await fetcher.movieDetails(title: item.title, year: item.year)
+        if let found { try? database.cacheDetails(found, key: key) }
+        return found
+    }
+
     // MARK: Artist pictures
 
     /// Photos found or chosen for artists, by artist id.

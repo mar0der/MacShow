@@ -82,20 +82,29 @@ struct MovieTile: View {
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
 
+    /// Movies open their page; home videos and music videos just play.
     var body: some View {
-        Button { player.play([movie], showVideo: true) } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                VideoStill(item: movie)
-                    .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(movie.title).font(.callout.weight(.semibold)).lineLimit(1)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
+        Group {
+            if movie.kind == .movie, let id = movie.id {
+                NavigationLink(value: MovieRef(id: id)) { label }
+            } else {
+                Button { player.play([movie], showVideo: true) } label: { label }
             }
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .contextMenu { VideoMenu(item: movie, queue: [movie]) }
+    }
+
+    private var label: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VideoStill(item: movie)
+                .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(movie.title).font(.callout.weight(.semibold)).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .contentShape(Rectangle())
     }
 
     private var subtitle: String {
@@ -206,6 +215,7 @@ struct ShowDetailView: View {
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
     @State private var season: Int?
+    @State private var details: MediaDetails?
 
     var body: some View {
         let selectedSeason = season ?? nextUp?.season ?? show.seasons.first
@@ -218,7 +228,17 @@ struct ShowDetailView: View {
                         .shadow(color: .black.opacity(0.4), radius: 14, y: 6)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(show.title).font(.largeTitle.weight(.bold))
-                        Text("\(show.seasons.count) seasons · \(show.episodes.count) episodes").foregroundStyle(.secondary)
+                        Text(([details?.year.map(String.init), (details?.seasons.map { "\(show.seasons.count) of \($0) seasons" } ?? "\(show.seasons.count) seasons") + " · \(show.episodes.count) episodes",
+                               details?.rating.map { String(format: "★ %.1f", $0) }, details?.genres.prefix(3).joined(separator: ", ")]
+                            as [String?]).compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                            .foregroundStyle(.secondary)
+                        if let overview = details?.overview {
+                            Text(overview).frame(maxWidth: 640, alignment: .leading).lineLimit(4).fixedSize(horizontal: false, vertical: true)
+                                .help(overview)
+                        }
+                        if let makers = details?.makers, !makers.isEmpty {
+                            Text("Created by " + makers.joined(separator: ", ")).font(.callout).foregroundStyle(.secondary)
+                        }
                         if let next = nextUp {
                             Button {
                                 player.play(show.episodes, startAt: show.episodes.firstIndex(of: next) ?? 0)
@@ -250,6 +270,7 @@ struct ShowDetailView: View {
             .padding(28)
         }
         .navigationTitle(show.title)
+        .task(id: show.id) { details = await library.details(for: show.episodes[0]) }
     }
 
     /// The episode to continue with: one in progress, else the first unwatched.
