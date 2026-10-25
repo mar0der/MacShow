@@ -1,10 +1,14 @@
 #!/bin/bash
 # Builds a release MacShow.app and packs it into build/MacShow.dmg (with an
 # Applications shortcut to drag it onto).
-# Signed ad-hoc unless SIGN_IDENTITY is set; see RELEASING.md for notarizing.
+# Signed with this Mac's Developer ID if there is one (or SIGN_IDENTITY), else
+# ad-hoc; see RELEASING.md for notarizing.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The identity build-app.sh would pick, so the DMG is signed with it too.
+: "${SIGN_IDENTITY:=$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)}"
+export SIGN_IDENTITY
 scripts/build-app.sh release
 STAGE=build/dmg
 rm -rf "$STAGE" build/MacShow.dmg
