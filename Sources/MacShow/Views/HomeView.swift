@@ -7,7 +7,7 @@ struct HomeView: View {
     var body: some View {
         let index = library.index
         if index.isEmpty {
-            EmptyLibraryView(title: library.isScanning ? "Reading Your Library…" : "Nothing Here Yet", icon: "play.square.stack")
+            EmptyLibraryView(title: library.isScanning ? LocalizedStringKey("Reading Your Library…") : LocalizedStringKey("Nothing Here Yet"), icon: "play.square.stack")
                 .navigationTitle("Home")
         } else {
             ScrollView {
@@ -95,7 +95,7 @@ struct JumpBackInCard: View {
         }
     }
 
-    private var kind: String {
+    private var kind: LocalizedStringKey {
         switch item.kind {
         case .episode: "Episode"
         case .audiobook: "Audiobook"
@@ -106,8 +106,8 @@ struct JumpBackInCard: View {
 
     private func detail(_ saved: PlaybackPosition?) -> String {
         let episode = item.kind == .episode ? "S\(item.season ?? 1) E\(item.episode ?? 0) · " : ""
-        if let saved, saved.isResumable { return episode + "\(Format.duration(saved.remaining)) left" }
-        return episode + (item.kind == .episode ? "Up next" : Format.duration(item.duration))
+        if let saved, saved.isResumable { return episode + String(localized: "\(Format.duration(saved.remaining)) left") }
+        return episode + (item.kind == .episode ? String(localized: "Up next") : Format.duration(item.duration))
     }
 
     /// Episodes play on through the rest of their show.
@@ -149,7 +149,7 @@ struct BookJumpCard: View {
 
 /// A titled, horizontally scrolling row.
 struct Shelf<Content: View>: View {
-    let title: String
+    let title: LocalizedStringKey
     @ViewBuilder let content: Content
 
     var body: some View {

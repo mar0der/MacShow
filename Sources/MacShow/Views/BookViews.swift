@@ -42,7 +42,7 @@ struct BooksView: View {
         .toolbar {
             if !books.isEmpty {
                 Picker("Sort By", selection: $order) {
-                    ForEach(Order.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(Order.allCases, id: \.self) { Text(LocalizedStringKey($0.rawValue)).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .help("Sort audiobooks")
@@ -81,8 +81,8 @@ struct BookTile: View {
     }
 
     private func subtitle(_ progress: BookProgress) -> String {
-        if progress.isFinished { return [book.author, "Finished"].compactMap { $0 }.joined(separator: " · ") }
-        if progress.isStarted { return "\(Format.duration(progress.remaining)) left" }
+        if progress.isFinished { return [book.author, String(localized: "Finished")].compactMap { $0 }.joined(separator: " · ") }
+        if progress.isStarted { return String(localized: "\(Format.duration(progress.remaining)) left") }
         return [book.author, Format.duration(book.duration)].compactMap { $0 }.joined(separator: " · ")
     }
 }
@@ -190,7 +190,7 @@ struct BookDetailView: View {
                 BookTransportControls(large: true).frame(maxWidth: .infinity)
             } else {
                 Button { player.play(book.parts, startAt: progress.partIndex) } label: {
-                    Label(progress.isStarted && !progress.isFinished ? "Resume" : "Play", systemImage: "play.fill")
+                    Label(progress.isStarted && !progress.isFinished ? LocalizedStringKey("Resume") : LocalizedStringKey("Play"), systemImage: "play.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -241,15 +241,15 @@ struct BookDetailView: View {
 
     private var sleepLabel: String {
         switch player.sleepTimer {
-        case .off: "Sleep"
-        case .endOfChapter: "End of Chapter"
-        case .at(let date): "\(max(Int(date.timeIntervalSinceNow / 60), 1)) min"
+        case .off: String(localized: "Sleep")
+        case .endOfChapter: String(localized: "End of Chapter")
+        case .at(let date): String(localized: "\(max(Int(date.timeIntervalSinceNow / 60), 1)) min")
         }
     }
 
     private func progressText(_ progress: BookProgress) -> String {
-        if progress.isFinished { return "Finished" }
-        if progress.isStarted { return "\(Int(progress.fraction * 100))% · \(Format.duration(progress.remaining)) left" }
+        if progress.isFinished { return String(localized: "Finished") }
+        if progress.isStarted { return String(localized: "\(Int(progress.fraction * 100))% · \(Format.duration(progress.remaining)) left") }
         return Format.duration(book.duration)
     }
 

@@ -207,7 +207,7 @@ struct ArtistsView: View {
                                     VStack(spacing: 2) {
                                         Text(artist.name).font(.callout.weight(.semibold)).lineLimit(1)
                                         if artist.isFeaturedOnly {
-                                            Text("Featured on \(artist.appearances.count) song\(artist.appearances.count == 1 ? "" : "s")")
+                                            Text(artist.appearances.count == 1 ? LocalizedStringKey("Featured on 1 song") : "Featured on \(artist.appearances.count) songs")
                                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                         }
                                     }
@@ -247,7 +247,7 @@ struct ArtistsView: View {
             }
             Toggle(isOn: $showFeatured) { Label("Featured Artists", systemImage: "person.2") }
                 .toggleStyle(.button)
-                .help(showFeatured ? "Hide artists who are only featured on songs" : "Also show artists featured on songs")
+                .help(showFeatured ? LocalizedStringKey("Hide artists who are only featured on songs") : LocalizedStringKey("Also show artists featured on songs"))
         }
     }
 }
@@ -287,7 +287,7 @@ struct ArtistDetailView: View {
                     subtitle: artist.appearsWith.map { "Featured with \($0)" } ?? "",
                     details: [artist.albums.isEmpty ? nil : "\(artist.albums.count) albums",
                               artist.songs.isEmpty ? nil : "\(artist.songs.count) songs",
-                              artist.appearances.isEmpty ? nil : "Featured on \(artist.appearances.count) song\(artist.appearances.count == 1 ? "" : "s")"]
+                              artist.appearances.isEmpty ? nil : artist.appearances.count == 1 ? String(localized: "Featured on 1 song") : String(localized: "Featured on \(artist.appearances.count) songs")]
                         .compactMap { $0 }.joined(separator: " · "),
                     circular: true, items: artist.songs.isEmpty ? artist.appearances : artist.songs
                 )
@@ -431,13 +431,13 @@ struct SmartPlaylistView: View {
                         .frame(width: 220, height: 220)
                         .background(.tint.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(list.title).font(.largeTitle.weight(.bold))
-                        Text("\(songs.count) song\(songs.count == 1 ? "" : "s") · fills itself as you listen").font(.callout).foregroundStyle(.secondary)
+                        Text(LocalizedStringKey(list.title)).font(.largeTitle.weight(.bold))
+                        Text(songs.count == 1 ? LocalizedStringKey("1 song · fills itself as you listen") : "\(songs.count) songs · fills itself as you listen").font(.callout).foregroundStyle(.secondary)
                         PlayShuffleButtons(items: songs).padding(.top, 8)
                     }
                 }
                 if songs.isEmpty {
-                    Text(list == .recentlyPlayed || list == .mostPlayed ? "Songs appear here once you've listened to most of them." : "Nothing here.")
+                    Text(list == .recentlyPlayed || list == .mostPlayed ? LocalizedStringKey("Songs appear here once you've listened to most of them.") : LocalizedStringKey("Nothing here."))
                         .foregroundStyle(.secondary)
                 } else {
                     TrackList(tracks: songs, showsArtist: true, numbered: false)
@@ -445,7 +445,7 @@ struct SmartPlaylistView: View {
             }
             .padding(28)
         }
-        .navigationTitle(list.title)
+        .navigationTitle(LocalizedStringKey(list.title))
     }
 }
 

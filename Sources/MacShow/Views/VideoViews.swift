@@ -5,14 +5,15 @@ private let videoGrid = [GridItem(.adaptive(minimum: 220, maximum: 320), spacing
 
 /// Movies or Home Videos: a grid of stills.
 struct VideoGridView: View {
-    let title: String
+    let title: LocalizedStringKey
+    let emptyTitle: LocalizedStringKey
     let icon: String
     let videos: [MediaItem]
 
     var body: some View {
         Group {
             if videos.isEmpty {
-                EmptyLibraryView(title: "No \(title)", icon: icon)
+                EmptyLibraryView(title: emptyTitle, icon: icon)
             } else {
                 ScrollView {
                     LazyVGrid(columns: videoGrid, spacing: 28) {
@@ -109,7 +110,7 @@ struct MovieTile: View {
 
     private var subtitle: String {
         if let saved = movie.id.flatMap({ library.positions[$0] }), saved.isResumable {
-            return "\(Format.duration(saved.remaining)) left"
+            return String(localized: "\(Format.duration(saved.remaining)) left")
         }
         return [movie.year.map(String.init), Format.duration(movie.duration)].compactMap { $0 }.joined(separator: " · ")
     }
@@ -193,7 +194,7 @@ struct ShowsView: View {
 
     private func seasonSummary(_ show: Show) -> String {
         let seasons = show.seasons.count
-        return "\(seasons) season\(seasons == 1 ? "" : "s") · \(show.episodes.count) episodes"
+        return seasons == 1 ? String(localized: "1 season · \(show.episodes.count) episodes") : String(localized: "\(seasons) seasons · \(show.episodes.count) episodes")
     }
 }
 
@@ -283,7 +284,7 @@ struct ShowDetailView: View {
     private func resumeLabel(_ episode: MediaItem) -> String {
         let label = "S\(episode.season ?? 1) E\(episode.episode ?? 0)"
         let resuming = episode.id.flatMap { library.positions[$0] }?.isResumable == true
-        return resuming ? "Resume \(label)" : "Play \(label)"
+        return resuming ? String(localized: "Resume \(label)") : String(localized: "Play \(label)")
     }
 }
 
@@ -313,7 +314,7 @@ struct EpisodeRow: View {
 
     private var detail: String {
         if let saved = episode.id.flatMap({ library.positions[$0] }), saved.isResumable {
-            return "\(Format.duration(saved.remaining)) left"
+            return String(localized: "\(Format.duration(saved.remaining)) left")
         }
         return Format.duration(episode.duration)
     }

@@ -154,7 +154,7 @@ struct DLNAMenu: View {
     var body: some View {
         let dlna = player.dlna
         Menu {
-            Section(dlna.isSearching ? "Looking for TVs…" : "TVs (DLNA)") {
+            Section(dlna.isSearching ? LocalizedStringKey("Looking for TVs…") : LocalizedStringKey("TVs (DLNA)")) {
                 ForEach(dlna.renderers) { renderer in
                     Toggle(renderer.name, isOn: Binding(get: { dlna.renderer == renderer }, set: { on in
                         if on { dlna.cast(to: renderer) } else { dlna.stop(resume: true) }
