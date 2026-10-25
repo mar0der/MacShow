@@ -22,7 +22,14 @@ final class Player {
     private(set) var formatInfo = ""
     private(set) var chapterTitle: String?
     private(set) var isShuffled = false
-    var volume: Double = 100 { didSet { setDouble("volume", volume) } }
+    /// Remembered across launches.
+    var volume: Double = UserDefaults.standard.object(forKey: "volume") as? Double ?? 100 {
+        didSet {
+            setDouble("volume", volume)
+            UserDefaults.standard.set(volume, forKey: "volume")
+        }
+    }
+    var isMuted = false { didSet { setFlag("mute", isMuted) } }
     /// Playback speed (audiobooks); pitch is kept.
     var speed: Double = 1 {
         didSet {
@@ -110,6 +117,7 @@ final class Player {
 
         let status = mpv_initialize(mpv)
         guard status >= 0 else { fatalError("mpv_initialize: \(String(cString: mpv_error_string(status)))") }
+        setDouble("volume", volume)
 
         for (name, format) in [
             ("time-pos", MPV_FORMAT_DOUBLE), ("duration", MPV_FORMAT_DOUBLE),

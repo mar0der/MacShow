@@ -22,6 +22,13 @@ public final class Library {
     public private(set) var isScanning = false
     /// Goes up each time `index` is replaced; cheap to watch for "the library changed".
     public private(set) var generation = 0
+    /// Folders and files marked Never Scan, Personal or Adult.
+    public private(set) var folderRules: [FolderRule] = []
+    /// Whether items in Adult folders are listed (in their own section). Off at
+    /// every launch; the app unlocks it.
+    public var showingAdult = false {
+        didSet { if showingAdult != oldValue { refresh() } }
+    }
 
     public let database: LibraryDatabase
     public let artwork: ArtworkStore
@@ -86,6 +93,7 @@ public final class Library {
         // Re-read at most about once a second while a scan is writing batches.
         positions = (try? database.writer.read(LibraryDatabase.positions)) ?? [:]
         bookmarks = (try? database.bookmarks()) ?? []
+        folderRules = (try? database.folderRules()) ?? []
         changes = DatabaseRegionObservation(tracking: Table("mediaItem"), Table("playlist"), Table("playlistEntry"))
             .publisher(in: database.writer)
             .map { _ in () }
@@ -114,12 +122,14 @@ public final class Library {
             return
         }
         refreshRunning = true
-        let database = database
+        let database = database, rules = FolderRules(folderRules), showingAdult = showingAdult
         refreshQueue.async { [weak self] in
             let snapshot = try? database.writer.read { db -> (LibraryIndex, [PlaylistContents]) in
                 let items = try MediaItem.fetchAll(db)
-                let byID = Dictionary(uniqueKeysWithValues: items.compactMap { item in item.id.map { ($0, item) } })
-                return (LibraryIndex(items: items), try LibraryDatabase.playlistContents(db, items: byID))
+                // Playlists keep every copy of a duplicate song, but never adult items.
+                let listed = items.filter { rules.kind(for: $0.path).map { $0 == .personal } ?? true }
+                let byID = Dictionary(uniqueKeysWithValues: listed.compactMap { item in item.id.map { ($0, item) } })
+                return (LibraryIndex(items: items, rules: rules, showingAdult: showingAdult), try LibraryDatabase.playlistContents(db, items: byID))
             }
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -239,7 +249,7 @@ public final class Library {
                     // A folder removed since this was queued must not be re-indexed.
                     let canonical = URL(fileURLWithPath: path).canonicalPath
                     guard watchedRoots.contains(where: { canonical == $0 || canonical.hasPrefix($0 + "/") }) else { continue }
-                    await scanner.scan(folder: URL(fileURLWithPath: path))
+                    await scanner.scan(folder: URL(fileURLWithPath: path), excluding: FolderRules(folderRules).excludedPaths)
                 case .remove(let folder):
                     // Items another watched folder still covers stay, keeping their
                     // playlist entries and resume points.
@@ -292,6 +302,19 @@ public final class Library {
             watchedRoots = state.1
             offlineFolders = state.2
             watcher = state.3
+        }
+    }
+
+    /// Marks a folder or file as Never Scan, Personal or Adult (nil clears it).
+    public func setRule(_ kind: FolderRule.Kind?, for url: URL) {
+        let path = url.canonicalPath
+        let wasExcluded = FolderRules(folderRules).kind(for: path) == .excluded
+        try? database.setFolderRule(kind, for: path)
+        folderRules = (try? database.folderRules()) ?? []
+        refresh()
+        // Index what an exclusion was hiding.
+        if wasExcluded, FolderRules(folderRules).kind(for: path) != .excluded {
+            enqueue(.scan(Classifier.isMediaFile(url) ? url.deletingLastPathComponent().canonicalPath : path))
         }
     }
 

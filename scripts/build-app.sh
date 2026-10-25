@@ -9,8 +9,8 @@ CONFIG="${1:-release}"
 # Release builds are universal (Apple silicon and Intel); debug builds only for this Mac.
 ARCHS=()
 [ "$CONFIG" = release ] && ARCHS=(--arch arm64 --arch x86_64)
-swift build -c "$CONFIG" "${ARCHS[@]}" --product MacShow
-BIN_DIR="$(swift build -c "$CONFIG" "${ARCHS[@]}" --show-bin-path)"
+swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --product MacShow
+BIN_DIR="$(swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --show-bin-path)"
 
 APP=build/MacShow.app
 rm -rf "$APP"

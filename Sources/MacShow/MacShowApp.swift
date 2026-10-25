@@ -1,4 +1,5 @@
 import AppKit
+import LocalAuthentication
 import MacShowCore
 import SwiftUI
 
@@ -20,6 +21,7 @@ struct MacShowApp: App {
         player.library = library
         _library = State(initialValue: library)
         _player = State(initialValue: player)
+        VideoScreen.installKeys(for: player)
         // At launch, not when a window appears: the app can be opened for a file
         // from Finder without its main window.
         library.start()
@@ -28,7 +30,7 @@ struct MacShowApp: App {
     var body: some Scene {
         Window("MacShow", id: "main") {
             RootView()
-                .opensVideoWindow()  // inside the .environment calls, so it can read the player
+                .modifier(MainWindowReopener())
                 // "Open With MacShow" / files dropped on the Dock icon. SwiftUI delivers
                 // these here (not to the app delegate), one URL at a time.
                 .onOpenURL { url in player.openExternal(url) }
@@ -54,14 +56,33 @@ struct MacShowApp: App {
                 .keyboardShortcut("o")
             }
             CommandMenu("Controls") {
-                Button(player.isPaused ? "Play" : "Pause") { player.togglePause() }
-                    .keyboardShortcut(.space, modifiers: [])
+                // Space itself is handled by VideoScreen, so it works whatever has focus.
+                Button(player.isPaused ? "Play (Space)" : "Pause (Space)") { player.togglePause() }
                     .disabled(!player.hasMedia)
                 Button("Next") { player.next() }.keyboardShortcut(.rightArrow)
                 Button("Previous") { player.previous() }.keyboardShortcut(.leftArrow)
                 Divider()
                 Button("Skip Forward 10 Seconds") { player.skip(10) }.keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
                 Button("Skip Back 10 Seconds") { player.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+                Divider()
+                Button("Volume Up") { player.volume = min(100, player.volume + 5) }.keyboardShortcut(.upArrow)
+                Button("Volume Down") { player.volume = max(0, player.volume - 5) }.keyboardShortcut(.downArrow)
+                Button(player.isMuted ? "Unmute" : "Mute") { player.isMuted.toggle() }.keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                Divider()
+                Button("Full Screen Video") { VideoScreen.toggleFullScreen() }
+                    .keyboardShortcut("f", modifiers: [.command, .control])
+                    .disabled(!player.isVideo)
+                Button("Close Video") { player.stop() }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
+                    .disabled(!player.isVideo)
+            }
+            CommandGroup(after: .sidebar) {
+                Button(library.showingAdult ? "Hide Adult Content" : "Show Adult Content…") {
+                    if library.showingAdult { library.showingAdult = false } else { unlockAdult(library) }
+                }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+                .disabled(!library.folderRules.contains { $0.kind == .adult } && !library.showingAdult)
+                Divider()
             }
             CommandGroup(before: .windowList) {
                 OpenWindowButton(title: "Mini Player", id: "mini").keyboardShortcut("m", modifiers: [.command, .shift])
@@ -72,23 +93,13 @@ struct MacShowApp: App {
 
         Window("Mini Player", id: "mini") {
             MiniPlayerView()
-                .opensVideoWindow()
+                .opensMainWindowForVideo()
                 .environment(library)
                 .environment(player)
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
-        .noRestoration()
-
-        Window("Video", id: "video") {
-            VideoPlayerView()
-                .environment(library)
-                .environment(player)
-                .preferredColorScheme(.dark)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1280, height: 720)
         .noRestoration()
 
         Settings {
@@ -111,21 +122,35 @@ extension Scene {
 }
 
 extension View {
-    /// Opens the video window when a video starts, from whichever MacShow window is open.
-    func opensVideoWindow() -> some View { modifier(VideoWindowOpener()) }
+    /// Videos play in the main window; bring it up when one starts from the mini player.
+    func opensMainWindowForVideo() -> some View { modifier(MainWindowOpener()) }
 }
 
-private struct VideoWindowOpener: ViewModifier {
+private struct MainWindowOpener: ViewModifier {
     @Environment(Player.self) private var player
     @Environment(\.openWindow) private var openWindow
 
     func body(content: Content) -> some View {
-        content
-            // A file opened from Finder can start before any window exists.
-            .onAppear { if player.isVideo { openWindow(id: "video") } }
-            .onChange(of: player.isVideo) { _, isVideo in
-                if isVideo { openWindow(id: "video") }
-            }
+        content.onChange(of: player.isVideo) { _, isVideo in
+            if isVideo { openWindow(id: "main") }
+        }
+    }
+}
+
+/// Keeps SwiftUI's `openWindow` so a Dock click can bring the main window back after it was closed.
+private struct MainWindowReopener: ViewModifier {
+    @Environment(\.openWindow) private var openWindow
+
+    func body(content: Content) -> some View {
+        content.onAppear { AppDelegate.openMainWindow = { openWindow(id: "main") } }
+    }
+}
+
+/// Shows Adult content after Touch ID or the Mac's password. It locks again at every launch.
+@MainActor
+func unlockAdult(_ library: Library) {
+    LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "show adult content") { success, _ in
+        if success { DispatchQueue.main.async { library.showingAdult = true } }
     }
 }
 
@@ -141,11 +166,20 @@ private struct OpenWindowButton: View {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    @MainActor static var openMainWindow: (() -> Void)?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Needed when launched as a bare executable (swift run) rather than an .app bundle.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Like Music and TV: closing the window keeps the app (and any music) running.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// A Dock click with no window open brings the library back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { MainActor.assumeIsolated { Self.openMainWindow?() } }
+        return true
+    }
 }

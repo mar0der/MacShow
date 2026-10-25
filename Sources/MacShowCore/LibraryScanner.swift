@@ -25,10 +25,12 @@ public final class LibraryScanner: Sendable {
     /// modification date) and removes items whose files are gone. A folder that
     /// doesn't exist (an unplugged drive), or one whose listing hit an error, has
     /// nothing removed: a partial listing must not look like deleted files.
+    /// Nothing under `excluded` (canonical paths of folders or files) is indexed,
+    /// and items already indexed there are removed.
     @discardableResult
-    public func scan(folder: URL) async -> ScanResult {
+    public func scan(folder: URL, excluding excluded: [String] = []) async -> ScanResult {
         let folder = URL(fileURLWithPath: folder.canonicalPath)
-        guard let (files, unreadable) = Self.mediaFiles(in: folder) else { return ScanResult() }
+        guard let (files, unreadable) = Self.mediaFiles(in: folder, excluding: excluded) else { return ScanResult() }
 
         let stamps = (try? database.fileStamps(under: folder.path)) ?? [:]
         var pending: [MediaFile] = []
@@ -79,7 +81,8 @@ public final class LibraryScanner: Sendable {
     /// Every media file under `folder`, plus the paths that couldn't be read
     /// (folders the listing failed on, files whose details failed); nil if
     /// `folder` isn't a reachable folder.
-    private static func mediaFiles(in folder: URL) -> ([MediaFile], unreadable: [String])? {
+    private static func mediaFiles(in folder: URL, excluding excluded: [String]) -> ([MediaFile], unreadable: [String])? {
+        func isExcluded(_ path: String) -> Bool { excluded.contains { path == $0 || path.hasPrefix($0 + "/") } }
         let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
         var isDirectory: ObjCBool = false
         var unreadable: [String] = []
@@ -94,7 +97,13 @@ public final class LibraryScanner: Sendable {
         else { return nil }
 
         var files: [MediaFile] = []
-        for case let url as URL in enumerator where Classifier.isMediaFile(url) {
+        if isExcluded(folder.path) { return (files, unreadable) }
+        for case let url as URL in enumerator {
+            if isExcluded(url.path) {
+                enumerator.skipDescendants()
+                continue
+            }
+            guard Classifier.isMediaFile(url) else { continue }
             guard let values = try? url.resourceValues(forKeys: Set(keys)) else {
                 unreadable.append(url.path)
                 continue

@@ -162,3 +162,53 @@ struct FolderWatcherTests {
         #expect(reported.contains { $0.hasPrefix(folder.canonicalPath) })
     }
 }
+
+struct FolderRuleTests {
+    @Test func excludedFolderIsNotIndexedAndItsItemsGo() async throws {
+        let library = try TempLibrary()
+        let hidden = library.folder.appendingPathComponent("X")
+        try FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: library.folder.appendingPathComponent("song.flac"), to: hidden.appendingPathComponent("song.flac"))
+        await library.scanner.scan(folder: library.folder)
+        #expect(try library.database.allItems().count == 3)
+
+        try library.database.setFolderRule(.excluded, for: hidden.canonicalPath)
+        #expect(try library.database.allItems().count == 2)
+        let excluded = FolderRules(try library.database.folderRules()).excludedPaths
+        #expect(await library.scanner.scan(folder: library.folder, excluding: excluded) == ScanResult())
+        // Scanning inside the excluded folder (a file system event there) adds nothing.
+        await library.scanner.scan(folder: hidden, excluding: excluded)
+        #expect(try library.database.allItems().map(\.url.lastPathComponent).sorted() == ["My.Show.S02E05.720p.mkv", "book.m4b"])
+
+        try library.database.setFolderRule(nil, for: hidden.canonicalPath)
+        #expect(await library.scanner.scan(folder: library.folder).added == 1)
+    }
+
+    @Test func innermostRuleWins() {
+        let rules = FolderRules([FolderRule(path: "/Movies/X", kind: .adult), FolderRule(path: "/Movies/X/Keep", kind: .excluded)])
+        #expect(rules.kind(for: "/Movies/X/a.mp4") == .adult)
+        #expect(rules.kind(for: "/Movies/X/Keep/b.mp4") == .excluded)
+        #expect(rules.kind(for: "/Movies/Xmas.mp4") == nil)
+    }
+
+    @Test func adultAndPersonalFoldersStayApart() {
+        let items = [
+            makeItem("/Movies/Film.mkv", kind: .movie),
+            makeItem("/Movies/Family/Birthday.mov", kind: .movie),
+            makeItem("/Movies/X/clip.mp4", kind: .movie),
+        ].enumerated().map { offset, item in var item = item; item.id = Int64(offset + 1); item.duration = 3600; return item }
+        let rules = FolderRules([FolderRule(path: "/Movies/Family", kind: .personal), FolderRule(path: "/Movies/X", kind: .adult)])
+
+        let locked = LibraryIndex(items: items, rules: rules)
+        #expect(locked.movies.map(\.title) == ["Film.mkv"])
+        #expect(locked.homeVideos.map(\.title) == ["Birthday.mov"])
+        #expect(locked.adult.isEmpty)
+        #expect(!locked.recentlyAdded.contains { $0.path.hasPrefix("/Movies/X/") })
+        #expect(locked.itemsByID[3] == nil)
+
+        let unlocked = LibraryIndex(items: items, rules: rules, showingAdult: true)
+        #expect(unlocked.adult.map(\.title) == ["clip.mp4"])
+        #expect(unlocked.movies.map(\.title) == ["Film.mkv"])
+        #expect(!unlocked.recentlyAdded.contains { $0.path.hasPrefix("/Movies/X/") })
+    }
+}

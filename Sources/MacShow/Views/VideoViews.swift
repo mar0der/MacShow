@@ -127,6 +127,8 @@ struct VideoMenu: View {
         }
         Divider()
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
+        Divider()
+        FolderRuleMenu(items: [item])
     }
 }
 
@@ -134,6 +136,7 @@ struct VideoMenu: View {
 
 struct ShowsView: View {
     @Environment(Library.self) private var library
+    @Environment(Player.self) private var player
 
     var body: some View {
         let shows = library.index.shows
@@ -156,6 +159,11 @@ struct ShowsView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Play") { player.play(show.episodes) }
+                                Divider()
+                                FolderRuleMenu(items: show.episodes)
+                            }
                         }
                     }
                     .padding(28)

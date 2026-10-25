@@ -2,10 +2,10 @@ import MacShowCore
 import SwiftUI
 
 enum SidebarItem: Hashable, RawRepresentable {
-    case home, albums, artists, songs, movies, shows, homeVideos, books
+    case home, albums, artists, songs, movies, shows, homeVideos, books, adult
     case playlist(Int64)
 
-    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .homeVideos, .books]
+    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .homeVideos, .books, .adult]
 
     init?(rawValue: String) {
         if rawValue.hasPrefix("playlist:"), let id = Int64(rawValue.dropFirst("playlist:".count)) {
@@ -27,6 +27,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .shows: "shows"
         case .homeVideos: "homeVideos"
         case .books: "books"
+        case .adult: "adult"
         case .playlist(let id): "playlist:\(id)"
         }
     }
@@ -41,6 +42,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .shows: "TV Shows"
         case .homeVideos: "Home Videos"
         case .books: "All Books"
+        case .adult: "Adult"
         case .playlist: "Playlist"
         }
     }
@@ -55,6 +57,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .shows: "tv"
         case .homeVideos: "video"
         case .books: "book"
+        case .adult: "eye.slash"
         case .playlist: "music.note.list"
         }
     }
@@ -70,6 +73,15 @@ struct RootView: View {
     @State private var path = NavigationPath()
 
     var body: some View {
+        // Videos play in this window, TV-app style, and Back (or Esc) returns here.
+        if player.isVideo {
+            VideoPlayerView()
+        } else {
+            browser
+        }
+    }
+
+    private var browser: some View {
         NavigationSplitView {
             sidebar
         } detail: {
@@ -79,6 +91,9 @@ struct RootView: View {
                     .libraryDestinations()
             }
             .onChange(of: selection) { _, _ in path = NavigationPath() }
+            .onChange(of: library.showingAdult) { _, showing in
+                if !showing, selection == .adult { selection = .home }
+            }
             #if DEBUG
             .modifier(DebugHooks(path: $path))
             #endif
@@ -98,6 +113,10 @@ struct RootView: View {
                 row(.movies)
                 row(.shows)
                 row(.homeVideos)
+                if library.showingAdult {
+                    row(.adult)
+                        .contextMenu { Button("Hide Adult Content") { library.showingAdult = false } }
+                }
             }
             Section("Audiobooks") { row(.books) }
             Section {
@@ -155,6 +174,12 @@ struct RootView: View {
             case .shows: ShowsView()
             case .homeVideos: VideoGridView(title: "Home Videos", icon: "video", videos: library.index.homeVideos)
             case .books: BooksView()
+            case .adult:
+                if library.showingAdult {
+                    VideoGridView(title: "Adult", icon: "eye.slash", videos: library.index.adult)
+                } else {
+                    HomeView()
+                }
             case .playlist(let id):
                 if let contents = library.playlists.first(where: { $0.playlist.id == id }) {
                     PlaylistView(contents: contents)

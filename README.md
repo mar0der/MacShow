@@ -16,6 +16,23 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
   stopped, subtitle and audio-track menus.
 - **Audiobooks.** Chaptered M4B files or folders of MP3s, chapters, speed,
   sleep timer, bookmarks, resume to the second.
+- **Content kept apart.** Right-click a video to mark its folder as Personal
+  (Home Videos), Adult (hidden everywhere; its own section after Touch ID, locked
+  again at every launch) or Never Scan, or hide single files. Settings › Content
+  lists them.
+
+### Keys
+
+| Key | Does |
+| --- | --- |
+| Space | Play / pause (anywhere but a text field) |
+| ← → | Back / forward 10 seconds (video) |
+| ↑ ↓ | Volume (video); ⌘↑ ⌘↓ anywhere |
+| ⌘← ⌘→ | Previous / next |
+| F or double-click | Full screen (video) |
+| M | Mute (video) |
+| Esc | Leave full screen, then close the video |
+| ⇧⌘A | Show / hide Adult content |
 
 See the [roadmap](ROADMAP.md) for the plan and what's left.
 

@@ -46,8 +46,12 @@ public struct LibraryIndex: Sendable {
     public var artists: [Artist] = []
     public var songs: [MediaItem] = []
     public var movies: [MediaItem] = []
-    /// Videos shorter than 20 minutes that aren't TV episodes: clips, recordings, phone videos.
+    /// Videos in folders marked Personal, plus other videos shorter than 20
+    /// minutes that aren't TV episodes: clips, recordings, phone videos.
     public var homeVideos: [MediaItem] = []
+    /// Items in folders marked Adult, when they're shown at all. They appear
+    /// nowhere else: not in Home, search, `itemsByID` or any other list.
+    public var adult: [MediaItem] = []
     public var shows: [Show] = []
     public var books: [Book] = []
     public var recentlyAdded: [MediaItem] = []
@@ -70,7 +74,21 @@ public struct LibraryIndex: Sendable {
         songs.isEmpty && movies.isEmpty && homeVideos.isEmpty && shows.isEmpty && books.isEmpty
     }
 
-    public init(items: [MediaItem]) {
+    /// Groups `items`, applying `rules`. Adult items are left out entirely
+    /// unless `showingAdult`, and then only listed in `adult`.
+    public init(items allItems: [MediaItem], rules: FolderRules = FolderRules(), showingAdult: Bool = false) {
+        var items: [MediaItem] = [], personal: Set<String> = []
+        for item in allItems {
+            switch rules.kind(for: item.path) {
+            case .excluded: continue
+            case .adult: if showingAdult { adult.append(item) }
+            case .personal:
+                if item.kind == .movie || item.kind == .episode { personal.insert(item.path) } else { items.append(item) }
+            case nil: items.append(item)
+            }
+        }
+        adult.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        let personalVideos = allItems.filter { personal.contains($0.path) }
         let byKind = Dictionary(grouping: items, by: \.kind)
         let (music, duplicateGroups) = Self.removingDuplicates(byKind[.music] ?? [])
         duplicates = duplicateGroups
@@ -109,7 +127,8 @@ public struct LibraryIndex: Sendable {
 
         let videos = (byKind[.movie] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         movies = videos.filter { $0.duration >= Self.homeVideoMaxDuration }
-        homeVideos = videos.filter { $0.duration < Self.homeVideoMaxDuration }
+        homeVideos = (videos.filter { $0.duration < Self.homeVideoMaxDuration } + personalVideos)
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         shows = Dictionary(grouping: byKind[.episode] ?? []) { ($0.show ?? "Unknown Show").lowercased() }
             .map { key, episodes in
                 let sorted = episodes.sorted { ($0.season ?? 0, $0.episode ?? 0) < ($1.season ?? 0, $1.episode ?? 0) }
@@ -134,6 +153,7 @@ public struct LibraryIndex: Sendable {
                 if let id = episode.id { nextEpisode[id] = next }
             }
         }
+        items += personalVideos
         recentlyAdded = Array(items.sorted { $0.addedAt > $1.addedAt }.prefix(20))
         itemsByID = Dictionary(uniqueKeysWithValues: items.compactMap { item in item.id.map { ($0, item) } })
     }

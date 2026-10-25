@@ -5,6 +5,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             LibrarySettings().tabItem { Label("Library", systemImage: "folder") }
+            ContentSettings().tabItem { Label("Content", systemImage: "eye.slash") }
             DuplicatesSettings().tabItem { Label("Duplicates", systemImage: "square.on.square") }
             AboutView().tabItem { Label("About", systemImage: "info.circle") }
         }
@@ -75,6 +76,66 @@ struct LibrarySettings: View {
         panel.prompt = "Add to Library"
         guard panel.runModal() == .OK else { return }
         panel.urls.forEach(library.addFolder)
+    }
+}
+
+/// Folders marked Personal or Adult, and what's never scanned.
+struct ContentSettings: View {
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        Form {
+            Section {
+                if library.folderRules.isEmpty {
+                    Text("Nothing yet. Right-click a video and choose its folder to sort it.").foregroundStyle(.secondary)
+                }
+                ForEach(library.folderRules) { rule in
+                    HStack {
+                        Label(rule.path.replacingOccurrences(of: Library.realHomeDirectory.path, with: "~"), systemImage: "folder")
+                            .lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Picker("", selection: Binding(get: { rule.kind }, set: { library.setRule($0, for: URL(fileURLWithPath: rule.path)) })) {
+                            ForEach(FolderRule.Kind.allCases, id: \.self) { Text(Self.title($0)).tag($0) }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Button { library.setRule(nil, for: URL(fileURLWithPath: rule.path)) } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless)
+                            .help("Back to normal")
+                    }
+                }
+                Menu("Add Folder") {
+                    ForEach(FolderRule.Kind.allCases, id: \.self) { kind in
+                        Button(Self.title(kind) + "…") { addFolder(kind) }
+                    }
+                }
+                .fixedSize()
+            } header: {
+                Text("Sorted Folders")
+            } footer: {
+                Text("Personal: videos show under Home Videos. Adult: kept out of Home, search and every list; shown in their own section after Touch ID (View › Show Adult Content, ⇧⌘A), and hidden again at every launch. Never Scan: not in the library at all.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    static func title(_ kind: FolderRule.Kind) -> String {
+        switch kind {
+        case .excluded: "Never Scan"
+        case .personal: "Personal"
+        case .adult: "Adult"
+        }
+    }
+
+    private func addFolder(_ kind: FolderRule.Kind) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Mark as \(Self.title(kind))"
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls { library.setRule(kind, for: url) }
     }
 }
 
