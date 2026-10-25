@@ -88,6 +88,7 @@ struct QueueView: View {
                             }
                             .id(offset)
                         }
+                        .onMove { player.moveQueueItem(from: $0, to: $1) }
                     }
                     .listStyle(.plain)
                     .onAppear { proxy.scrollTo(player.queueIndex, anchor: .top) }

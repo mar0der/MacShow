@@ -440,6 +440,15 @@ final class Player {
         queue.append(contentsOf: items)
     }
 
+    /// Drag to reorder Up Next. Same convention as `Array.move(fromOffsets:toOffset:)`,
+    /// which is also how mpv's playlist-move counts.
+    func moveQueueItem(from source: IndexSet, to destination: Int) {
+        guard source.count == 1, let from = source.first, from != destination, from + 1 != destination else { return }
+        command("playlist-move", String(from), String(destination))
+        queue.move(fromOffsets: source, toOffset: destination)
+        queueIndex = Int(string("playlist-pos") ?? "")
+    }
+
     func removeFromQueue(at index: Int) {
         guard queue.indices.contains(index), index != queueIndex else { return }
         command("playlist-remove", String(index))

@@ -7,6 +7,7 @@ import SwiftUI
 ///   -debugPlayAlbum "Kamikaze"   starts playing it
 ///   -debugOpenWindow mini        opens a window by id
 ///   -debugInfoAlbum "Kamikaze"   opens Get Info for its tracks
+///   -debugMoveQueue "4,1"        moves queue entry 4 before 1 and logs both orders
 ///   -debugShow "Name" -debugOpenShow YES / -debugPlayShow YES
 struct DebugHooks: ViewModifier {
     @Binding var path: NavigationPath
@@ -49,6 +50,14 @@ struct DebugHooks: ViewModifier {
             }
         }
         if let album = album("debugPlayAlbum") { player.play(album.tracks) }
+        if let move = defaults.string(forKey: "debugMoveQueue")?.split(separator: ",").compactMap({ Int($0) }), move.count == 2 {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                player.moveQueueItem(from: [move[0]], to: move[1])
+                let mpvOrder = (0..<player.queue.count).map { player.string("playlist/\($0)/filename").map { URL(fileURLWithPath: $0).lastPathComponent } ?? "-" }
+                FileHandle.standardError.write(Data("queue: \(player.queue.map(\.url.lastPathComponent).prefix(6))\nmpv:   \(mpvOrder.prefix(6))\nplaying index \(player.queueIndex ?? -1) = \(player.string("playlist-pos") ?? "-")\n".utf8))
+            }
+        }
         if let id = defaults.string(forKey: "debugOpenWindow") { openWindow(id: id) }
         if let album = album("debugInfoAlbum") { openWindow(id: "info", value: album.tracks.compactMap(\.id)) }
         if defaults.bool(forKey: "debugOpenSettings") { openSettings() }
