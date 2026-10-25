@@ -127,9 +127,11 @@ public struct LibraryIndex: Sendable {
         songSearchKeys = songs.map { [$0.title, $0.artist, $0.album].compactMap { $0 }.joined(separator: " ").lowercased() }
         // A folder whose tracks disagree on album artist (a compilation where only
         // some tracks are tagged) stays one album, grouped by folder.
-        let mixedFolders = Set(Dictionary(grouping: music, by: Self.folderAlbumKey)
+        // Worked out once per song: thousands of songs share a few hundred folders.
+        let folderKeys = Dictionary(music.map { ($0.path, Self.folderAlbumKey($0)) }, uniquingKeysWith: { first, _ in first })
+        let mixedFolders = Set(Dictionary(grouping: music, by: { folderKeys[$0.path]! })
             .filter { Set($0.value.map(\.albumArtist)).count > 1 }.keys)
-        albums = Dictionary(grouping: music) { mixedFolders.contains(Self.folderAlbumKey($0)) ? Self.folderAlbumKey($0) : Self.albumKey($0) }
+        albums = Dictionary(grouping: music) { mixedFolders.contains(folderKeys[$0.path]!) ? folderKeys[$0.path]! : Self.albumKey($0) }
             .map { key, tracks in
                 let sorted = tracks.sorted(by: Self.trackOrder)
                 return Album(
@@ -142,14 +144,22 @@ public struct LibraryIndex: Sendable {
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         // Each song goes to its main artist; the others credited on it are featured.
         let soloArtists = Set(music.flatMap { [$0.artist, $0.albumArtist] }.compactMap { $0?.lowercased() })
+        // Many songs share a tag: split each distinct one once.
+        var creditCache: [String: [String]] = [:]
+        func credits(_ tag: String) -> [String] {
+            if let known = creditCache[tag] { return known }
+            let names = Self.credits(tag, soloArtists: soloArtists)
+            creditCache[tag] = names
+            return names
+        }
         var spellings: [String: [String]] = [:]
         var songsByArtist: [String: [MediaItem]] = [:], appearancesByArtist: [String: [MediaItem]] = [:]
         var leadsOfAppearances: [String: [String]] = [:]
         for song in music {
             guard let tag = song.artist else { continue }
-            var names = Self.credits(tag, soloArtists: soloArtists)
+            var names = credits(tag)
             if let albumArtist = song.albumArtist, albumArtist.lowercased() != "various artists",
-               let lead = Self.credits(albumArtist, soloArtists: soloArtists).first {
+               let lead = credits(albumArtist).first {
                 names = [lead] + names.filter { $0.lowercased() != lead.lowercased() }
             }
             for guest in Self.featuredInTitle(song.title) where !names.contains(where: { $0.lowercased() == guest.lowercased() }) {
@@ -163,7 +173,7 @@ public struct LibraryIndex: Sendable {
             }
         }
         let albumsByArtist = Dictionary(grouping: albums) { album in
-            (Self.credits(album.artist, soloArtists: soloArtists).first ?? album.artist).lowercased()
+            (credits(album.artist).first ?? album.artist).lowercased()
         }
         artists = Set(albumsByArtist.keys).union(songsByArtist.keys).union(appearancesByArtist.keys)
             .subtracting(["various artists"])
@@ -292,7 +302,10 @@ public struct LibraryIndex: Sendable {
     }
 
     static func folderAlbumKey(_ item: MediaItem) -> String {
-        "folder\u{1F}\(item.url.deletingLastPathComponent().path.lowercased())\u{1F}\((item.album ?? folderName(item)).lowercased())"
+        // String work, not URL: this runs for every song on every library change.
+        let folder = item.path[..<(item.path.lastIndex(of: "/") ?? item.path.endIndex)]
+        let name = item.album ?? String(folder[(folder.lastIndex(of: "/").map(folder.index(after:)) ?? folder.startIndex)...])
+        return "folder\u{1F}\(folder.lowercased())\u{1F}\(name.lowercased())"
     }
 
     /// The album artist tag, else the one artist on every track, else "Various Artists".
@@ -309,6 +322,11 @@ public struct LibraryIndex: Sendable {
     /// on its own in the library, so "Emerson, Lake & Palmer" stays one band;
     /// "feat." and "ft." always split.
     static func credits(_ tag: String, soloArtists: Set<String>) -> [String] {
+        // Most tags name one artist: nothing to split.
+        let lowered = tag.lowercased()
+        guard tag.contains("&") || tag.contains(",") || lowered.contains("feat") || lowered.contains("ft.") else {
+            return [tag.trimmingCharacters(in: .whitespaces)]
+        }
         func parts(_ text: String) -> [String] {
             text.components(separatedBy: ", ").flatMap { $0.components(separatedBy: " & ") }
                 .map { $0.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "()[]"))) }
