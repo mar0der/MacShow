@@ -49,7 +49,10 @@ find "$BIN_DIR" -maxdepth 1 -name '*.bundle' ! -name '*Tests.bundle' -exec cp -R
 if [ -z "${SIGN_IDENTITY:-}" ]; then
     SIGN_IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
 fi
+# A real identity also gets the hardened runtime and a secure timestamp, which notarizing requires.
+SIGN_FLAGS=()
+[ -n "$SIGN_IDENTITY" ] && SIGN_FLAGS=(--options runtime --timestamp)
 # The bridge first (it runs outside the sandbox, started by other apps), then the app around it.
-codesign --force --sign "${SIGN_IDENTITY:--}" "$APP/Contents/MacOS/macshow-mcp"
-codesign --force --sign "${SIGN_IDENTITY:--}" --entitlements Resources/MacShow.entitlements "$APP"
+codesign --force --sign "${SIGN_IDENTITY:--}" ${SIGN_FLAGS[@]+"${SIGN_FLAGS[@]}"} "$APP/Contents/MacOS/macshow-mcp"
+codesign --force --sign "${SIGN_IDENTITY:--}" ${SIGN_FLAGS[@]+"${SIGN_FLAGS[@]}"} --entitlements Resources/MacShow.entitlements "$APP"
 echo "$APP"

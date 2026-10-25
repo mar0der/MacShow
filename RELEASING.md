@@ -10,8 +10,8 @@ needs a paid Apple Developer account.
 1. In the Apple Developer portal, create a **Developer ID Application** certificate
    and install it in your keychain.
 2. Find its name: `security find-identity -v -p codesigning`
-3. Add the hardened runtime to the signing step in `scripts/build-app.sh`
-   (`codesign --options runtime …`), then build:
+3. Build. With a real identity, `scripts/build-app.sh` signs with the hardened
+   runtime and a secure timestamp, which notarization needs:
 
 ```bash
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" scripts/make-dmg.sh
@@ -19,19 +19,24 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" scripts/make-dmg.sh
 
 ## 2. Notarization
 
-Store an app-specific password once, then submit and staple each release:
+Create an app-specific password at appleid.apple.com and store it once
+(it asks for the password):
 
 ```bash
 xcrun notarytool store-credentials MacShow --apple-id you@example.com --team-id TEAMID
-xcrun notarytool submit build/MacShow.dmg --keychain-profile MacShow --wait
-xcrun stapler staple build/MacShow.dmg
+```
+
+Then `NOTARY_PROFILE` makes `make-dmg.sh` submit the DMG, wait for Apple, and staple it:
+
+```bash
+NOTARY_PROFILE=MacShow SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" scripts/make-dmg.sh
 ```
 
 If notarization reports problems with the bundled libraries, `xcrun notarytool log <id>`
 lists them. mpv is set not to load any Lua scripts (user scripts, config, and its
 built-in ones like the stats overlay and console), so LuaJIT should never start and
-the `allow-jit` entitlement shouldn't be needed. Check this on the first hardened
-build by playing a file and watching Console for code-signing errors.
+the `allow-jit` entitlement isn't needed: music and video play in the hardened
+build with no code-signing errors in Console.
 
 ## Licenses
 
