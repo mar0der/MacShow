@@ -41,6 +41,9 @@ final class Player {
     @ObservationIgnored var nowPlaying: NowPlaying?
     /// Where resume points are read from and saved to; set by the app.
     @ObservationIgnored weak var library: Library?
+    /// Playing on an Apple TV. While it's active, playback commands go there
+    /// and mpv waits, paused.
+    let airPlay = AirPlay()
     @ObservationIgnored private var lastSavedSecond = -1
     /// The item whose file mpv has loaded (positions are saved against it).
     @ObservationIgnored private var loadedItem: MediaItem?
@@ -136,6 +139,7 @@ final class Player {
             let player = Unmanaged<Player>.fromOpaque(context!).takeUnretainedValue()
             player.eventQueue.async { player.drainEvents() }
         }, Unmanaged.passUnretained(self).toOpaque())
+        airPlay.player = self
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.savePosition()
@@ -308,6 +312,7 @@ final class Player {
     /// Selects a track, or turns subtitles off with nil.
     func select(_ track: Track?, type: String) {
         setString(type == "sub" ? "sid" : "aid", track.map { String($0.id) } ?? "no")
+        airPlay.tracksChanged()
     }
 
     func addSubtitleFile(_ url: URL) { command("sub-add", url.path, "select") }
@@ -333,17 +338,27 @@ final class Player {
         lastExternalOpen = Date()
     }
 
-    func togglePause() { command("cycle", "pause") }
+    func togglePause() {
+        if airPlay.isActive { return airPlay.togglePause() }
+        command("cycle", "pause")
+    }
+
     /// One frame forward or back (pauses).
-    func stepFrame(forward: Bool) { command(forward ? "frame-step" : "frame-back-step") }
+    func stepFrame(forward: Bool) {
+        guard !airPlay.isActive else { return }
+        command(forward ? "frame-step" : "frame-back-step")
+    }
+
     /// The next subtitle track, then off.
     func cycleSubtitles() { command("cycle", "sub") }
     func seek(to seconds: Double) {
+        if airPlay.isActive { return airPlay.seek(to: seconds) }
         retargetSleep(at: seconds)
         command("seek", String(seconds), "absolute")
     }
 
     func skip(_ seconds: Double) {
+        if airPlay.isActive { return airPlay.seek(to: position + seconds) }
         retargetSleep(at: position + seconds)
         command("seek", String(seconds), "relative")
     }
@@ -390,6 +405,7 @@ final class Player {
     }
 
     func stop() {
+        airPlay.stop(resume: false)
         savePosition()
         command("stop")
         queue = []
@@ -413,6 +429,52 @@ final class Player {
         let ordered = (0..<count).compactMap { string("playlist/\($0)/filename").flatMap { byPath[$0] } }
         if ordered.count == queue.count { queue = ordered }
         queueIndex = Int(string("playlist-pos") ?? "")
+    }
+
+    // MARK: AirPlay
+
+    /// The file mpv has loaded.
+    var loadedPath: String? { loadedItem?.path ?? string("path") }
+
+    /// FFmpeg's index of the selected audio ("audio") or subtitle ("sub")
+    /// stream; nil if none, or for a subtitle file added separately.
+    func streamIndex(_ type: String) -> Int32? {
+        guard string("current-tracks/\(type)/external") != "yes" else { return nil }
+        return string("current-tracks/\(type)/ff-index").flatMap { Int32($0) }
+    }
+
+    /// The video went to the TV: mpv waits.
+    func castDidStart() { setFlag("pause", true) }
+
+    /// Where the TV is, every half second: shown, and saved as the resume point.
+    func castProgress(position: Double, isPaused: Bool) {
+        self.position = position
+        let bucket = Int(position) / 5
+        if bucket != lastSavedSecond {
+            lastSavedSecond = bucket
+            savePosition(publish: false)
+        }
+        if isPaused != self.isPaused {
+            self.isPaused = isPaused
+            if isPaused { savePosition() }
+        }
+        nowPlaying?.update()
+    }
+
+    /// The TV played to the end: finished, and on to the next episode if there is one.
+    func castDidReachEnd() {
+        if let item = loadedItem, item.kind != .music {
+            library?.savePosition(duration, duration: duration, for: item, publish: true)
+            startTimes.set(nil, for: item.path)
+        }
+        if let index = queueIndex, index + 1 < queue.count { next() }
+    }
+
+    /// AirPlay stopped: mpv carries on from where the TV was.
+    func castDidEnd(at position: Double, playing: Bool) {
+        savePosition()
+        command("seek", String(position), "absolute")
+        setFlag("pause", !playing)
     }
 
     // MARK: mpv plumbing
@@ -478,6 +540,15 @@ final class Player {
                         }
                         self.position = 0
                         self.lastSavedSecond = -1
+                        // On the TV, the next video goes there too.
+                        if self.airPlay.isActive, let path {
+                            if hasVideo {
+                                self.setFlag("pause", true)
+                                self.airPlay.follow(path, startAt: self.startTimes.time(for: path) ?? 0)
+                            } else {
+                                self.airPlay.stop(resume: true)
+                            }
+                        }
                     }
                 }
             case MPV_EVENT_END_FILE:
@@ -528,6 +599,8 @@ final class Player {
     }
 
     private func apply(_ name: String, _ value: Any?) {
+        // On the TV, its position and play state count, not paused mpv's.
+        if airPlay.isActive, name == "time-pos" || name == "pause" { return }
         switch name {
         case "time-pos":
             // Unavailable while a file unloads; keep the last real position.
