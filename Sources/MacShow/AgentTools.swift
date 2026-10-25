@@ -162,6 +162,43 @@ enum AgentTools {
                 })
                 return "ok"
             },
+            MCPTool("lyrics", "A song's lyrics (timed lines when available), from an .lrc file, its tags or LRCLIB.",
+                    input: ["type": "object", "required": ["id"], "properties": ["id": ["type": "integer"]]]) { arguments in
+                guard let item = arguments["id"]?.int.flatMap({ library.index.itemsByID[Int64($0)] }) else { throw MCPToolError("No item with that id.") }
+                guard let lyrics = await library.lyrics(for: item) else { return ["found": false] }
+                return ["source": .string(lyrics.source), "instrumental": .bool(lyrics.isInstrumental),
+                        "lines": .array(lyrics.lines.map { ["time": $0.time.map { .number($0) } ?? .null, "text": .string($0.text)] })]
+            },
+            MCPTool("details", "What TMDB knows about a movie or a show's episode: plot, year, runtime, rating, genres, cast.",
+                    input: ["type": "object", "required": ["id"], "properties": ["id": ["type": "integer"]]]) { arguments in
+                guard let item = arguments["id"]?.int.flatMap({ library.index.itemsByID[Int64($0)] }), item.kind == .movie || item.kind == .episode else {
+                    throw MCPToolError("Give the id of a movie or episode.")
+                }
+                guard let details = await library.details(for: item) else { return ["found": false] }
+                return [
+                    "title": .string(details.title), "year": details.year.map { .number(Double($0)) } ?? .null,
+                    "overview": details.overview.map { .string($0) } ?? .null, "rating": details.rating.map { .number($0) } ?? .null,
+                    "genres": .array(details.genres.map { .string($0) }), "made_by": .array(details.makers.map { .string($0) }),
+                    "cast": .array(details.cast.map { ["name": .string($0.name), "role": $0.role.map { .string($0) } ?? .null] }),
+                ]
+            },
+            MCPTool("smart_list", "Songs in a smart playlist: recently_played, most_played, recently_added or never_played.",
+                    input: ["type": "object", "required": ["list"], "properties": [
+                        "list": ["type": "string", "enum": ["recently_played", "most_played", "recently_added", "never_played"]],
+                        "limit": ["type": "integer"],
+                    ]]) { arguments in
+                let lists: [String: SmartList] = ["recently_played": .recentlyPlayed, "most_played": .mostPlayed,
+                                                   "recently_added": .recentlyAdded, "never_played": .neverPlayed]
+                guard let list = lists[arguments["list"]?.string ?? ""] else { throw MCPToolError("Unknown list.") }
+                return .array(library.songs(in: list).prefix(arguments["limit"]?.int ?? 50).map { song in
+                    var described = describe(song)
+                    if case .object(var fields) = described, let stat = song.id.flatMap({ library.playStats[$0] }) {
+                        fields["plays"] = .number(Double(stat.playCount))
+                        described = .object(fields)
+                    }
+                    return described
+                })
+            },
             MCPTool("rescan", "Look for new, changed and removed files in all watched folders.") { _ in
                 library.rescanAll()
                 return "started"
