@@ -103,6 +103,14 @@ struct MacShowApp: App {
         .windowResizability(.contentSize)
         .noRestoration()
 
+        WindowGroup("Get Info", id: "info", for: [Int64].self) { $ids in
+            InfoView(ids: ids ?? [])
+                .environment(library)
+                .preferredColorScheme(.dark)
+        }
+        .windowResizability(.contentSize)
+        .noRestoration()
+
         Settings {
             SettingsView()
                 .environment(library)

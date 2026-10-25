@@ -112,6 +112,7 @@ struct VideoMenu: View {
     let queue: [MediaItem]
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let start = queue.firstIndex(of: item) ?? 0
@@ -126,6 +127,7 @@ struct VideoMenu: View {
             Button("Mark as Watched") { library.savePosition(item.duration, duration: item.duration, for: item) }
         }
         Divider()
+        Button("Get Info…") { openWindow(id: "info", value: [item.id].compactMap { $0 }) }
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
         Divider()
         FolderRuleMenu(items: [item])

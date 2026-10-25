@@ -22,6 +22,8 @@ public final class Library {
     public private(set) var isScanning = false
     /// Goes up each time `index` is replaced; cheap to watch for "the library changed".
     public private(set) var generation = 0
+    /// Details changed with Get Info, by path (already applied to `index`).
+    public private(set) var edits: [String: ItemEdit] = [:]
     /// Folders and files marked Never Scan, Personal or Adult.
     public private(set) var folderRules: [FolderRule] = []
     /// Whether items in Adult folders are listed (in their own section). Off at
@@ -94,7 +96,7 @@ public final class Library {
         positions = (try? database.writer.read(LibraryDatabase.positions)) ?? [:]
         bookmarks = (try? database.bookmarks()) ?? []
         folderRules = (try? database.folderRules()) ?? []
-        changes = DatabaseRegionObservation(tracking: Table("mediaItem"), Table("playlist"), Table("playlistEntry"))
+        changes = DatabaseRegionObservation(tracking: Table("mediaItem"), Table("playlist"), Table("playlistEntry"), Table("itemEdit"))
             .publisher(in: database.writer)
             .map { _ in () }
             .catch { _ in Empty() }
@@ -124,18 +126,20 @@ public final class Library {
         refreshRunning = true
         let database = database, rules = FolderRules(folderRules), showingAdult = showingAdult
         refreshQueue.async { [weak self] in
-            let snapshot = try? database.writer.read { db -> (LibraryIndex, [PlaylistContents]) in
-                let items = try MediaItem.fetchAll(db)
+            let snapshot = try? database.writer.read { db -> (LibraryIndex, [PlaylistContents], [String: ItemEdit]) in
+                let edits = try LibraryDatabase.itemEdits(db)
+                let items = try MediaItem.fetchAll(db).map { item in edits[item.path]?.apply(to: item) ?? item }
                 // Playlists keep every copy of a duplicate song, but never adult items.
                 let listed = items.filter { rules.kind(for: $0.path).map { $0 == .personal } ?? true }
                 let byID = Dictionary(uniqueKeysWithValues: listed.compactMap { item in item.id.map { ($0, item) } })
-                return (LibraryIndex(items: items, rules: rules, showingAdult: showingAdult), try LibraryDatabase.playlistContents(db, items: byID))
+                return (LibraryIndex(items: items, rules: rules, showingAdult: showingAdult), try LibraryDatabase.playlistContents(db, items: byID), edits)
             }
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let snapshot {
                     self.index = snapshot.0
                     self.playlists = snapshot.1
+                    self.edits = snapshot.2
                     self.generation += 1
                     if !self.isScanning { self.fetchMissingArtwork() }
                 }
@@ -316,6 +320,11 @@ public final class Library {
         if wasExcluded, FolderRules(folderRules).kind(for: path) != .excluded {
             enqueue(.scan(Classifier.isMediaFile(url) ? url.deletingLastPathComponent().canonicalPath : path))
         }
+    }
+
+    /// Saves Get Info changes (an edit that changes nothing is removed).
+    public func save(_ edits: [ItemEdit]) {
+        try? database.save(edits)
     }
 
     // MARK: Resume points

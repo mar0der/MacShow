@@ -6,6 +6,7 @@ import SwiftUI
 ///   -debugOpenAlbum "Kamikaze"   pushes that album's page
 ///   -debugPlayAlbum "Kamikaze"   starts playing it
 ///   -debugOpenWindow mini        opens a window by id
+///   -debugInfoAlbum "Kamikaze"   opens Get Info for its tracks
 ///   -debugShow "Name" -debugOpenShow YES / -debugPlayShow YES
 struct DebugHooks: ViewModifier {
     @Binding var path: NavigationPath
@@ -49,6 +50,7 @@ struct DebugHooks: ViewModifier {
         }
         if let album = album("debugPlayAlbum") { player.play(album.tracks) }
         if let id = defaults.string(forKey: "debugOpenWindow") { openWindow(id: id) }
+        if let album = album("debugInfoAlbum") { openWindow(id: "info", value: album.tracks.compactMap(\.id)) }
         if defaults.bool(forKey: "debugOpenSettings") { openSettings() }
         if defaults.bool(forKey: "debugLogPlayer") {
             Task {

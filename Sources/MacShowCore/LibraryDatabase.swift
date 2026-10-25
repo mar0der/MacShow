@@ -78,6 +78,7 @@ public final class LibraryDatabase: Sendable {
         registerBookmarkMigration(&migrator)
         registerArtworkLookupMigration(&migrator)
         registerFolderRuleMigration(&migrator)
+        registerItemEditMigration(&migrator)
         return migrator
     }
 

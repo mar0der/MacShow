@@ -152,3 +152,28 @@ struct DuplicateRulesTests {
         #expect(LibraryIndex.isBetterCopy(aiff, aac))
     }
 }
+
+struct ItemEditTests {
+    @MainActor
+    @Test func editsShowInTheLibraryAndOutliveRescans() async throws {
+        let database = try LibraryDatabase.inMemory()
+        try database.upsert([makeItem("/m/a.mp3", title: "trck01", artist: "Unknown", album: "x")])
+        let library = Library(database: database, artwork: ArtworkStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("art-\(UUID())")))
+        var edit = ItemEdit(path: "/m/a.mp3")
+        edit.title = "Lose Yourself"
+        edit.artist = "Eminem"
+        library.save([edit])
+        for _ in 0..<100 where library.index.songs.first?.title != "Lose Yourself" { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(library.index.songs.first?.title == "Lose Yourself")
+        #expect(library.index.songs.first?.artist == "Eminem")
+        #expect(library.index.songs.first?.album == "x")
+
+        // The scanner re-reading the file's tags doesn't undo it.
+        try database.upsert([makeItem("/m/a.mp3", title: "trck01", artist: "Unknown", album: "x")])
+        #expect(try database.itemEdits()["/m/a.mp3"]?.title == "Lose Yourself")
+
+        // An edit set back to nothing is removed.
+        library.save([ItemEdit(path: "/m/a.mp3")])
+        #expect(try database.itemEdits().isEmpty)
+    }
+}

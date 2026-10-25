@@ -6,6 +6,7 @@ struct MediaMenu: View {
     let items: [MediaItem]
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let playable = items.filter { !$0.isProtected }
@@ -21,6 +22,7 @@ struct MediaMenu: View {
             }
         }
         Divider()
+        Button("Get Info…") { openWindow(id: "info", value: items.compactMap(\.id)) }
         Button("Show in Finder") {
             NSWorkspace.shared.activateFileViewerSelecting(items.prefix(20).map(\.url))
         }
