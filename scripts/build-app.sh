@@ -1,7 +1,10 @@
 #!/bin/bash
 # Builds build/MacShow.app: the SwiftPM executable wrapped in a sandboxed app bundle.
 # Usage: scripts/build-app.sh [release|debug]
-# Signs ad-hoc by default; set SIGN_IDENTITY to a "Developer ID Application: …" identity to sign for distribution.
+# Signs with this Mac's "Developer ID Application" identity if there is one, else ad-hoc;
+# set SIGN_IDENTITY to choose. A real identity matters even for local builds: macOS
+# remembers folder-access approvals by signature, and an ad-hoc signature changes
+# with every build, so each rebuild would ask again.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,5 +25,8 @@ cp -R Resources/Licenses "$APP/Contents/Resources/"  # notices and license texts
 # SwiftPM resource bundles of dependencies, if any.
 find "$BIN_DIR" -maxdepth 1 -name '*.bundle' ! -name '*Tests.bundle' -exec cp -R {} "$APP/Contents/Resources/" \;
 
+if [ -z "${SIGN_IDENTITY:-}" ]; then
+    SIGN_IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+fi
 codesign --force --sign "${SIGN_IDENTITY:--}" --entitlements Resources/MacShow.entitlements "$APP"
 echo "$APP"
