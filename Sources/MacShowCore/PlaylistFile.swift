@@ -21,6 +21,29 @@ public enum PlaylistFile {
         }
     }
 
+    /// What the Music app knows about each file: plays, last played, and
+    /// whether it's loved or rated 4–5 stars.
+    public struct TrackHistory: Equatable, Sendable {
+        public var path: String
+        public var playCount: Int
+        public var lastPlayed: Date?
+        public var isFavorite: Bool
+    }
+
+    public static func musicLibraryHistory(_ data: Data) throws -> [TrackHistory] {
+        guard let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let tracks = plist["Tracks"] as? [String: [String: Any]]
+        else { throw CocoaError(.fileReadCorruptFile) }
+        return tracks.values.compactMap { track in
+            guard let path = (track["Location"] as? String).flatMap(URL.init(string:))?.path else { return nil }
+            let loved = track["Loved"] as? Bool == true || track["Favorited"] as? Bool == true
+            let rating = (track["Rating"] as? Int ?? 0) >= 80 && track["Rating Computed"] as? Bool != true
+            let history = TrackHistory(path: path, playCount: track["Play Count"] as? Int ?? 0,
+                                       lastPlayed: track["Play Date UTC"] as? Date, isFavorite: loved || rating)
+            return history.playCount > 0 || history.isFavorite ? history : nil
+        }
+    }
+
     /// The files an M3U lists, with relative entries resolved against `folder`.
     public static func m3uPaths(_ text: String, relativeTo folder: URL) -> [String] {
         text.split(whereSeparator: \.isNewline).compactMap { line in

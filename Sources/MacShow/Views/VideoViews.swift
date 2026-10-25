@@ -140,6 +140,7 @@ struct VideoMenu: View {
             Button("Mark as Watched") { library.savePosition(item.duration, duration: item.duration, for: item) }
         }
         Divider()
+        Button(library.isFavorite([item]) ? "Remove from Favorites" : "Love") { library.toggleFavorite([item]) }
         Button("Get Info…") { openWindow(id: "info", value: [item.id].compactMap { $0 }) }
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
         Divider()

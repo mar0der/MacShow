@@ -17,6 +17,8 @@ public final class Library {
     public private(set) var bookmarks: [Bookmark] = []
     /// Play counts of songs and music videos, by item id.
     public private(set) var playStats: [Int64: PlayStat] = [:]
+    /// Loved items, by id.
+    public private(set) var favorites: Set<Int64> = []
     public private(set) var folders: [WatchedFolder] = []
     /// Watched folders that can't be reached right now (an unplugged drive).
     /// Their items stay in the library, shown as unavailable.
@@ -104,6 +106,7 @@ public final class Library {
         positions = (try? database.writer.read(LibraryDatabase.positions)) ?? [:]
         bookmarks = (try? database.bookmarks()) ?? []
         playStats = (try? database.playStats()) ?? [:]
+        favorites = (try? database.favorites()) ?? []
         folderRules = (try? database.folderRules()) ?? []
         artistImages = (try? database.writer.read { db in
             Dictionary(try Row.fetchAll(db, sql: "SELECT artistId, artworkKey FROM artistImage").map { ($0["artistId"], $0["artworkKey"]) },
@@ -443,7 +446,19 @@ public final class Library {
     }
 
     public func songs(in list: SmartList) -> [MediaItem] {
-        list.songs(in: index.songs, stats: playStats)
+        list.songs(in: index.songs, stats: playStats, favorites: favorites)
+    }
+
+    public func isFavorite(_ items: [MediaItem]) -> Bool {
+        !items.isEmpty && items.allSatisfy { $0.id.map(favorites.contains) ?? false }
+    }
+
+    /// Loves the items, or if they're all loved already, unloves them.
+    public func toggleFavorite(_ items: [MediaItem]) {
+        let love = !isFavorite(items)
+        let ids = items.compactMap(\.id)
+        if love { favorites.formUnion(ids) } else { favorites.subtract(ids) }
+        try? database.setFavorite(love, ids: ids)
     }
 
     // MARK: Lyrics
@@ -724,7 +739,9 @@ public final class Library {
     /// Creates playlists from the Music app's exported Library.xml, or one from
     /// an M3U file. Songs not in this library are skipped, and so are playlists
     /// left with none.
-    public func importPlaylists(from url: URL) throws -> (playlists: Int, songs: Int, missing: Int) {
+    /// Playlists from the Music app's exported Library.xml (or an M3U), plus
+    /// its play counts and loved or 4–5-star songs for the files that are here.
+    public func importPlaylists(from url: URL) throws -> (playlists: Int, songs: Int, missing: Int, history: Int, favorites: Int) {
         let data = try Data(contentsOf: url)
         let lists: [(name: String, paths: [String])]
         if ["m3u", "m3u8"].contains(url.pathExtension.lowercased()) {
@@ -736,7 +753,22 @@ public final class Library {
         let rules = FolderRules(folderRules)
         let byPath = Dictionary(((try? database.allItems()) ?? []).filter { rules.kind(for: $0.path) != .adult }.map { ($0.path, $0) },
                                 uniquingKeysWith: { first, _ in first })
-        var result = (playlists: 0, songs: 0, missing: 0)
+        var result = (playlists: 0, songs: 0, missing: 0, history: 0, favorites: 0)
+        if !["m3u", "m3u8"].contains(url.pathExtension.lowercased()) {
+            for track in try PlaylistFile.musicLibraryHistory(data) {
+                guard let id = (byPath[track.path] ?? byPath[URL(fileURLWithPath: track.path).canonicalPath])?.id else { continue }
+                if track.playCount > 0 {
+                    try? database.mergePlayHistory(of: id, count: track.playCount, lastPlayed: track.lastPlayed ?? .distantPast)
+                    result.history += 1
+                }
+                if track.isFavorite, !favorites.contains(id) {
+                    try? database.setFavorite(true, ids: [id])
+                    favorites.insert(id)
+                    result.favorites += 1
+                }
+            }
+            playStats = (try? database.playStats()) ?? playStats
+        }
         for list in lists {
             let items = list.paths.compactMap { byPath[$0] ?? byPath[URL(fileURLWithPath: $0).canonicalPath] }
             result.missing += list.paths.count - items.count
