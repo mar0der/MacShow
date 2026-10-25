@@ -59,7 +59,7 @@ public struct ArtworkFetcher: Sendable {
 
     /// What to look for when you search for artwork yourself (Get Info).
     public enum SearchKind: Sendable {
-        case album, movie, tvShow, musicVideo
+        case album, movie, tvShow, musicVideo, artist
 
         var query: (media: String, entity: String) {
             switch self {
@@ -67,6 +67,7 @@ public struct ArtworkFetcher: Sendable {
             case .movie: ("movie", "movie")
             case .tvShow: ("tvShow", "tvSeason")
             case .musicVideo: ("musicVideo", "musicVideo")
+            case .artist: ("music", "musicArtist")
             }
         }
     }
@@ -81,7 +82,48 @@ public struct ArtworkFetcher: Sendable {
         case .tvShow: return await tmdb(term, path: "tv") + iTunes(term, kind: kind) + wikipedia(term + " TV series")
         case .album: return await deezer(term) + iTunes(term, kind: kind)
         case .musicVideo: return await iTunes(term, kind: kind)
+        case .artist: return (await deezerArtists(term) ?? []).map(\.suggestion)
         }
+    }
+
+    /// A photo of the artist named exactly `name`: the most-followed match on
+    /// Deezer that has a picture. Only the name is sent.
+    public func artistPhoto(_ name: String) async -> Lookup {
+        guard let artists = await deezerArtists(name, limit: 10) else { return .failed }
+        guard let best = Self.bestArtist(artists, named: name) else { return .notFound }
+        guard let data = await image(best.suggestion) else { return .failed }
+        return .found(data)
+    }
+
+    struct DeezerArtist: Decodable {
+        var name: String
+        var nb_fan: Int?
+        var picture_medium: String?
+        var picture_xl: String?
+
+        /// Deezer answers "/images/artist//…" for artists without a picture.
+        var hasPicture: Bool { picture_xl.map { !$0.contains("/artist//") } ?? false }
+
+        var suggestion: ArtworkSuggestion {
+            let image = URL(string: picture_xl ?? "")!
+            return ArtworkSuggestion(title: name, detail: nb_fan.map { "\($0) fans" } ?? "Deezer",
+                                     thumbnail: picture_medium.flatMap(URL.init(string:)) ?? image, image: image)
+        }
+    }
+
+    private func deezerArtists(_ name: String, limit: Int = 20) async -> [DeezerArtist]? {
+        struct Response: Decodable { var data: [DeezerArtist] }
+        var components = URLComponents(string: "https://api.deezer.com/search/artist")!
+        components.queryItems = [.init(name: "q", value: name), .init(name: "limit", value: String(limit))]
+        guard let url = components.url, let (data, reply) = try? await session.data(from: url),
+              (reply as? HTTPURLResponse)?.statusCode == 200,
+              let response = try? JSONDecoder().decode(Response.self, from: data)
+        else { return nil }
+        return response.data.filter(\.hasPicture)
+    }
+
+    static func bestArtist(_ artists: [DeezerArtist], named name: String) -> DeezerArtist? {
+        artists.filter { normalize($0.name) == normalize(name) }.max { ($0.nb_fan ?? 0) < ($1.nb_fan ?? 0) }
     }
 
     private func tmdb(_ term: String, path: String) async -> [ArtworkSuggestion] {

@@ -50,7 +50,7 @@ struct ArtworkSearchView: View {
                 }
             }
             HStack {
-                Text("From TMDB, Deezer, the iTunes Store and Wikipedia.").font(.caption).foregroundStyle(.secondary)
+                Text(kind == .artist ? "From Deezer." : "From TMDB, Deezer, the iTunes Store and Wikipedia.").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
             }

@@ -190,6 +190,7 @@ struct ArtistsView: View {
     @Environment(Library.self) private var library
     /// Off: only artists you have albums or songs by. On: also everyone featured on them.
     @AppStorage("showFeaturedArtists") private var showFeatured = false
+    @State private var changingPicture: Artist?
 
     var body: some View {
         let artists = library.index.artists.filter { showFeatured || !$0.isFeaturedOnly }
@@ -214,7 +215,14 @@ struct ArtistsView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .contextMenu { MediaMenu(items: artist.isFeaturedOnly ? artist.appearances : artist.songs) }
+                            .contextMenu {
+                                MediaMenu(items: artist.isFeaturedOnly ? artist.appearances : artist.songs)
+                                Divider()
+                                Button("Change Picture…") { changingPicture = artist }
+                                if library.artistImages[artist.id] != nil {
+                                    Button("Use Album Cover") { library.setPicture(nil, for: artist) }
+                                }
+                            }
                         }
                     }
                     .padding(28)
@@ -222,7 +230,21 @@ struct ArtistsView: View {
             }
         }
         .navigationTitle("Artists")
+        .sheet(item: $changingPicture) { artist in
+            ArtworkSearchView(kind: .artist, term: artist.name) { data in
+                if let key = library.artwork.store(data) { library.setPicture(key, for: artist) }
+            }
+        }
         .toolbar {
+            if let progress = library.findingArtistPictures {
+                ProgressView(value: Double(progress.done), total: Double(progress.total))
+                    .frame(width: 80)
+                    .help("Finding pictures: \(progress.done) of \(progress.total)")
+            } else {
+                Button { library.findArtistPictures(for: artists) } label: { Label("Find Pictures", systemImage: "person.crop.circle.badge.plus") }
+                    .help("Find a photo for every artist without one (you can change any later)")
+                    .disabled(!artists.contains { library.picture(of: $0) == nil })
+            }
             Toggle(isOn: $showFeatured) { Label("Featured Artists", systemImage: "person.2") }
                 .toggleStyle(.button)
                 .help(showFeatured ? "Hide artists who are only featured on songs" : "Also show artists featured on songs")
@@ -237,12 +259,12 @@ struct ArtistAvatar: View {
     @Environment(Library.self) private var library
 
     var body: some View {
-        ArtworkView(key: artist.artworkKey, title: artist.name, cornerRadius: 100)
+        ArtworkView(key: library.picture(of: artist), title: artist.name, cornerRadius: 100)
             .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
             .overlay(alignment: .bottomTrailing) {
                 if let lead = artist.appearsWith, let leadArtist = library.index.artists.first(where: { $0.id == lead.lowercased() }) {
                     GeometryReader { geometry in
-                        ArtworkView(key: leadArtist.artworkKey, title: leadArtist.name, cornerRadius: 100)
+                        ArtworkView(key: library.picture(of: leadArtist), title: leadArtist.name, cornerRadius: 100)
                             .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 3))
                             .frame(width: geometry.size.width * 0.36, height: geometry.size.width * 0.36)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
@@ -255,12 +277,13 @@ struct ArtistAvatar: View {
 
 struct ArtistDetailView: View {
     let artist: Artist
+    @Environment(Library.self) private var library
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 CollectionHeader(
-                    artworkKey: artist.artworkKey, title: artist.name,
+                    artworkKey: library.picture(of: artist), title: artist.name,
                     subtitle: artist.appearsWith.map { "Featured with \($0)" } ?? "",
                     details: [artist.albums.isEmpty ? nil : "\(artist.albums.count) albums",
                               artist.songs.isEmpty ? nil : "\(artist.songs.count) songs",

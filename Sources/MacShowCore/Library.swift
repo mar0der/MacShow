@@ -102,6 +102,10 @@ public final class Library {
         positions = (try? database.writer.read(LibraryDatabase.positions)) ?? [:]
         bookmarks = (try? database.bookmarks()) ?? []
         folderRules = (try? database.folderRules()) ?? []
+        artistImages = (try? database.writer.read { db in
+            Dictionary(try Row.fetchAll(db, sql: "SELECT artistId, artworkKey FROM artistImage").map { ($0["artistId"], $0["artworkKey"]) },
+                       uniquingKeysWith: { _, last in last })
+        }) ?? [:]
         changes = DatabaseRegionObservation(tracking: Table("mediaItem"), Table("playlist"), Table("playlistEntry"), Table("itemEdit"))
             .publisher(in: database.writer)
             .map { _ in () }
@@ -422,6 +426,48 @@ public final class Library {
         unpublishedPositions[id] = nil
         let database = database
         writeQueue.async { try? database.clearPosition(for: id) }
+    }
+
+    // MARK: Artist pictures
+
+    /// Photos found or chosen for artists, by artist id.
+    public private(set) var artistImages: [String: String] = [:]
+    public private(set) var findingArtistPictures: (done: Int, total: Int)?
+
+    /// The artist's photo if one was found or chosen, else their newest album cover.
+    public func picture(of artist: Artist) -> String? {
+        artistImages[artist.id] ?? artist.artworkKey
+    }
+
+    public func setPicture(_ artworkKey: String?, for artist: Artist) {
+        let database = database
+        try? database.writer.write { db in
+            if let artworkKey {
+                try db.execute(sql: "INSERT OR REPLACE INTO artistImage (artistId, artworkKey) VALUES (?, ?)", arguments: [artist.id, artworkKey])
+            } else {
+                try db.execute(sql: "DELETE FROM artistImage WHERE artistId = ?", arguments: [artist.id])
+            }
+        }
+        artistImages[artist.id] = artworkKey
+    }
+
+    /// Looks up a photo for each artist with no picture at all, picking the
+    /// best match itself (Deezer; only names are sent). You can change any later.
+    public func findArtistPictures(for artists: [Artist]) {
+        let missing = artists.filter { picture(of: $0) == nil }
+        guard findingArtistPictures == nil, !missing.isEmpty else { return }
+        findingArtistPictures = (0, missing.count)
+        Task {
+            let fetcher = ArtworkFetcher()
+            for (done, artist) in missing.enumerated() {
+                findingArtistPictures = (done, missing.count)
+                if case .found(let data) = await fetcher.artistPhoto(artist.name), let key = artwork.store(data) {
+                    setPicture(key, for: artist)
+                }
+                try? await Task.sleep(for: .milliseconds(250))  // Deezer allows 50 requests per 5 seconds
+            }
+            findingArtistPictures = nil
+        }
     }
 
     // MARK: Recaps and credits

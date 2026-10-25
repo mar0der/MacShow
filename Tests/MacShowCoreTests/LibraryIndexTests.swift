@@ -300,3 +300,13 @@ struct ArtworkSuggestionTests {
         #expect(found[0].image.absoluteString == "https://is1.mzstatic.com/a/1000x1000bb.jpg")
     }
 }
+
+struct ArtistPictureTests {
+    @Test func picksTheMostFollowedExactMatchWithAPicture() throws {
+        let json = #"{"data":[{"name":"Jellyroll","nb_fan":287,"picture_xl":"https://x/a/1000.jpg"},{"name":"Jelly Roll","nb_fan":230108,"picture_xl":"https://x/b/1000.jpg"},{"name":"Jelly Roll","nb_fan":5,"picture_xl":"https://x/c/1000.jpg"},{"name":"Paul Rosenberg","nb_fan":160,"picture_xl":"https://x/images/artist//1000.jpg"}]}"#
+        struct Response: Decodable { var data: [ArtworkFetcher.DeezerArtist] }
+        let artists = try JSONDecoder().decode(Response.self, from: Data(json.utf8)).data.filter(\.hasPicture)
+        #expect(ArtworkFetcher.bestArtist(artists, named: "Jelly Roll")?.picture_xl == "https://x/b/1000.jpg")
+        #expect(ArtworkFetcher.bestArtist(artists, named: "Paul Rosenberg") == nil)
+    }
+}

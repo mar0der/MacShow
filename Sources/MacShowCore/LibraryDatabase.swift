@@ -85,6 +85,12 @@ public final class LibraryDatabase: Sendable {
         registerArtworkLookupMigration(&migrator)
         registerFolderRuleMigration(&migrator)
         registerItemEditMigration(&migrator)
+        migrator.registerMigration("v11-artist-images") { db in
+            try db.create(table: "artistImage") { t in
+                t.primaryKey("artistId", .text)
+                t.column("artworkKey", .text).notNull()
+            }
+        }
         migrator.registerMigration("v9-folder-remount") { db in
             try db.alter(table: "watchedFolder") { t in t.add(column: "remountURL", .text) }
         }
