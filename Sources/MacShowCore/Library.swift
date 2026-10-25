@@ -58,6 +58,12 @@ public final class Library {
     @ObservationIgnored private var folderState: Task<Void, Never>?
     @ObservationIgnored private var volumeObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    /// Network folders we've tried to reconnect since the last rescan.
+    @ObservationIgnored private var reconnectTried: Set<String> = []
+    @ObservationIgnored private var networkRescan: Task<Void, Never>?
+    /// How often folders on network shares are rescanned: macOS doesn't report
+    /// changes another computer makes there.
+    nonisolated static let networkRescanInterval: Duration = .seconds(15 * 60)
     @ObservationIgnored private var artworkGeneration = 0
 
     /// Settings key: download cover art for albums that have none (default on).
@@ -181,6 +187,33 @@ public final class Library {
                 MainActor.assumeIsolated { self?.volumesChanged() }
             })
         }
+        networkRescan = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.networkRescanInterval)
+                self?.rescanNetworkFolders()
+            }
+        }
+    }
+
+    /// Rescans the network folders that are connected, and tries again to
+    /// reconnect the ones that aren't.
+    private func rescanNetworkFolders() {
+        reconnectTried.removeAll()
+        for folder in folders where folder.isOnNetworkShare && !offlineFolders.contains(folder.path) {
+            enqueue(.scan(folder.path))
+        }
+        reloadFolders()
+    }
+
+    /// Reconnects a network folder's share using its bookmark, quietly: with the
+    /// password in the Keychain it mounts; otherwise nothing happens (Settings
+    /// has a Connect button). Mounting is noticed like a drive being plugged in.
+    private func reconnect(_ folder: WatchedFolder) {
+        guard let bookmark = folder.bookmark else { return }
+        Task.detached(priority: .utility) {
+            var stale = false
+            _ = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope, .withoutUI], relativeTo: nil, bookmarkDataIsStale: &stale)
+        }
     }
 
     private func volumesChanged() {
@@ -211,6 +244,7 @@ public final class Library {
     }
 
     public func rescanAll() {
+        reconnectTried.removeAll()
         folders.forEach { enqueue(.scan($0.path)) }
     }
 
@@ -221,7 +255,8 @@ public final class Library {
             options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
             includingResourceValuesForKeys: nil, relativeTo: nil
         )
-        try? database.addWatchedFolder(WatchedFolder(path: url.path, bookmark: bookmark))
+        let remount = (try? url.resourceValues(forKeys: [.volumeURLForRemountingKey]))?.volumeURLForRemounting
+        try? database.addWatchedFolder(WatchedFolder(path: url.path, bookmark: bookmark, remountURL: remount?.absoluteString))
         reloadFolders()
         enqueue(.scan(url.path))
     }
@@ -282,6 +317,8 @@ public final class Library {
                 var accessed: [String] = []
                 for folder in folders where !alreadyAccessed.contains(folder.path) {
                     guard let bookmark = folder.bookmark else { continue }
+                    // A share that isn't connected: reconnecting can take a while, so it happens on its own (below).
+                    if folder.isOnNetworkShare, !FileManager.default.fileExists(atPath: folder.path) { continue }
                     var stale = false
                     guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale),
                           url.startAccessingSecurityScopedResource()
@@ -289,6 +326,14 @@ public final class Library {
                     accessed.append(folder.path)
                     if stale, let fresh = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil) {
                         try? database.updateBookmark(fresh, forFolder: folder.path)
+                    }
+                }
+                // Note the share address of folders added before it was recorded.
+                var foundShares = false
+                for folder in folders where !folder.isOnNetworkShare {
+                    if let remount = (try? URL(fileURLWithPath: folder.path).resourceValues(forKeys: [.volumeURLForRemountingKey]))?.volumeURLForRemounting {
+                        try? database.setRemountURL(remount.absoluteString, forFolder: folder.path)
+                        foundShares = true
                     }
                 }
                 let roots = folders.map { URL(fileURLWithPath: $0.path).canonicalPath }
@@ -299,13 +344,17 @@ public final class Library {
                         for path in Set(changed) { self?.enqueue(.scan(path)) }
                     }
                 }
-                return (accessed, roots, offline, watcher)
+                return (accessed, roots, offline, watcher, foundShares)
             }.value
             guard let self else { return }
             accessedFolders.formUnion(state.0)
             watchedRoots = state.1
             offlineFolders = state.2
             watcher = state.3
+            if state.4 { self.folders = (try? database.watchedFolders()) ?? self.folders }
+            for folder in self.folders where folder.isOnNetworkShare && offlineFolders.contains(folder.path) {
+                if reconnectTried.insert(folder.path).inserted { reconnect(folder) }
+            }
         }
     }
 
