@@ -70,6 +70,10 @@ Desktop and other MCP apps use the same `macshow-mcp` bridge inside the app. Age
 play, queue, make playlists and sort the library (a read-only switch limits them to looking and
 playing); they only reach MacShow on this Mac, with a token, and never see Adult folders.
 
+**Siri and Shortcuts:** "Pause MacShow", "Next song in MacShow", or the *Play in MacShow*
+action with any album, artist, playlist, show or song name. Scripts and other apps can open
+`macshow://play?q=kamikaze`, `macshow://pause`, `macshow://resume`, `macshow://next`, `macshow://previous`.
+
 See the [roadmap](ROADMAP.md) for the plan and what's left.
 
 ## Build and run

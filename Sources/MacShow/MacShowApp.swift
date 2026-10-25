@@ -24,6 +24,8 @@ struct MacShowApp: App {
         _player = State(initialValue: player)
         VideoScreen.installKeys(for: player)
         AgentControl.shared.configure(library: library, player: player)
+        AppServices.library = library
+        AppServices.player = player
         // At launch, not when a window appears: the app can be opened for a file
         // from Finder without its main window.
         library.start()
@@ -35,7 +37,9 @@ struct MacShowApp: App {
                 .modifier(MainWindowReopener())
                 // "Open With MacShow" / files dropped on the Dock icon. SwiftUI delivers
                 // these here (not to the app delegate), one URL at a time.
-                .onOpenURL { url in player.openExternal(url) }
+                .onOpenURL { url in
+                    if url.scheme == "macshow" { AppServices.handle(url) } else { player.openExternal(url) }
+                }
                 .environment(library)
                 .environment(player)
                 .preferredColorScheme(.dark)

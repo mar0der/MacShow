@@ -131,6 +131,18 @@
 			</array>
 		</dict>
 	</array>
+	<!-- macshow://play?q=…, macshow://pause, …: for Shortcuts and scripts. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>io.github.mar0der.MacShow</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>macshow</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>MacShow looks for file servers in your home (a NAS, or Macs and PCs sharing folders) so you can add their media, and sends videos to your Apple TV when you use AirPlay.</string>
 	<key>NSBonjourServices</key>

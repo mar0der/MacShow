@@ -12,7 +12,10 @@ CONFIG="${1:-release}"
 # Release builds are universal (Apple silicon and Intel); debug builds only for this Mac.
 ARCHS=()
 [ "$CONFIG" = release ] && ARCHS=(--arch arm64 --arch x86_64)
-swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --product MacShow
+# Constant values for App Intents (Siri and Shortcuts), turned into metadata below.
+INTENT_FLAGS=(-Xswiftc -emit-const-values -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file
+              -Xswiftc -Xfrontend -Xswiftc "$PWD/scripts/support/app-intents-protocols.json")
+swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --product MacShow "${INTENT_FLAGS[@]}"
 swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --product macshow-mcp
 BIN_DIR="$(swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --show-bin-path)"
 
@@ -24,6 +27,21 @@ cp "$BIN_DIR/macshow-mcp" "$APP/Contents/MacOS/macshow-mcp"  # the agent bridge,
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -R Resources/Licenses "$APP/Contents/Resources/"  # notices and license texts the bundled libraries require
+
+# Metadata.appintents: what Siri and Shortcuts read. Xcode makes it; a package
+# build has to run Apple's processor itself, on the compiler's constant values.
+VARIANT="$(tr '[:lower:]' '[:upper:]' <<< "${CONFIG:0:1}")${CONFIG:1}"
+OBJECTS="$(find .build -type d -path "*/MacShow.build/$VARIANT/MacShow-p.build/Objects-normal/arm64" | head -1)"
+INTENTS_TMP="$(mktemp -d)"
+find "$PWD/Sources/MacShow" -name '*.swift' > "$INTENTS_TMP/sources.txt"
+find "$PWD/$OBJECTS" -name '*.swiftconstvalues' > "$INTENTS_TMP/constvals.txt"
+xcrun appintentsmetadataprocessor --quiet-warnings --output "$APP/Contents/Resources" \
+    --toolchain-dir "$(dirname "$(dirname "$(dirname "$(xcrun --find swift)")")")" --module-name MacShow \
+    --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" --xcode-version "$(xcodebuild -version | awk '/Build version/{print $3}')" \
+    --platform-family macOS --deployment-target 14.0 --target-triple arm64-apple-macos14.0 \
+    --source-file-list "$INTENTS_TMP/sources.txt" --swift-const-vals-list "$INTENTS_TMP/constvals.txt" > /dev/null 2>&1 \
+    || echo "warning: no App Intents metadata (Siri and Shortcuts won't see MacShow)"
+rm -rf "$INTENTS_TMP"
 # SwiftPM resource bundles of dependencies, if any.
 find "$BIN_DIR" -maxdepth 1 -name '*.bundle' ! -name '*Tests.bundle' -exec cp -R {} "$APP/Contents/Resources/" \;
 
