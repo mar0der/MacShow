@@ -56,7 +56,7 @@ struct DebugHooks: ViewModifier {
             Task {
                 while true {
                     try? await Task.sleep(for: .seconds(2))
-                    FileHandle.standardError.write(Data("player: hasMedia=\(player.hasMedia) isVideo=\(player.isVideo) paused=\(player.isPaused) pos=\(Int(player.position))/\(Int(player.duration)) index=\(player.queueIndex ?? -1) format=\(player.formatInfo) vo=\(player.string("vo-configured") ?? "-") out=\(player.string("video-out-params/dw") ?? "-")x\(player.string("video-out-params/dh") ?? "-") layer=\(player.layer.drawableSize) inWindow=\(player.layer.superlayer != nil)\n".utf8))
+                    FileHandle.standardError.write(Data("player: hasMedia=\(player.hasMedia) isVideo=\(player.isVideo) paused=\(player.isPaused) pos=\(Int(player.position))/\(Int(player.duration)) index=\(player.queueIndex ?? -1) format=\(player.formatInfo) vo=\(player.string("vo-configured") ?? "-") out=\(player.string("video-out-params/dw") ?? "-")x\(player.string("video-out-params/dh") ?? "-") layer=\(player.layer.drawableSize) inWindow=\(player.layer.superlayer != nil) af=\(player.string("af") ?? "-")\n".utf8))
                 }
             }
         }

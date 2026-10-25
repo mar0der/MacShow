@@ -99,3 +99,20 @@ struct PlaylistFileTests {
         #expect(contents[0].items.map(\.path) == ["/Music/Eminem/01 Lose Yourself.m4a"])
     }
 }
+
+struct EqualizerTests {
+    @Test func flatHasNoFilter() {
+        #expect(Equalizer().mpvFilter == nil)
+    }
+
+    @Test func boostsGetHeadroom() {
+        var eq = Equalizer()
+        eq.gains[0] = 6
+        eq.gains[9] = -3.5
+        #expect(eq.mpvFilter == "lavfi=[volume=-6dB,equalizer=f=32:t=o:w=1:g=6,equalizer=f=16000:t=o:w=1:g=-3.5]")
+    }
+
+    @Test func presetsHaveEveryBand() {
+        #expect(Equalizer.presets.allSatisfy { $0.equalizer.gains.count == Equalizer.frequencies.count })
+    }
+}

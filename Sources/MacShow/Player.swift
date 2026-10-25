@@ -42,6 +42,46 @@ final class Player {
             refreshDeviceSampleRate()
         }
     }
+    /// The equalizer: on or off, the usual setting, and settings kept for single albums.
+    var equalizerOn = UserDefaults.standard.bool(forKey: "equalizerOn") {
+        didSet { UserDefaults.standard.set(equalizerOn, forKey: "equalizerOn"); applyEqualizer() }
+    }
+    var equalizer = Player.load(Equalizer.self, key: "equalizer") ?? Equalizer() {
+        didSet { Player.save(equalizer, key: "equalizer"); applyEqualizer() }
+    }
+    var albumEqualizers = Player.load([String: Equalizer].self, key: "albumEqualizers") ?? [:] {
+        didSet { Player.save(albumEqualizers, key: "albumEqualizers"); applyEqualizer() }
+    }
+    @ObservationIgnored private var appliedFilter = ""
+
+    /// Album equalizers are keyed by album artist and album.
+    static func albumKey(_ item: MediaItem?) -> String? {
+        guard let item, item.kind == .music, let album = item.album else { return nil }
+        return (item.albumArtistOrArtist + "\u{1F}" + album).lowercased()
+    }
+
+    /// The equalizer the playing item uses: its album's, else the usual one.
+    var activeEqualizer: Equalizer {
+        Self.albumKey(currentItem).flatMap { albumEqualizers[$0] } ?? equalizer
+    }
+
+    /// Sets mpv's filter, only when it changes: resetting it costs a moment of
+    /// audio, which would break gapless playback between tracks.
+    private func applyEqualizer() {
+        let filter = equalizerOn ? activeEqualizer.mpvFilter ?? "" : ""
+        guard filter != appliedFilter else { return }
+        appliedFilter = filter
+        setString("af", filter)
+    }
+
+    private static func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
+        UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(type, from: $0) }
+    }
+
+    private static func save<T: Encodable>(_ value: T, key: String) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(value), forKey: key)
+    }
+
     /// Sample rates of the playing file and of the audio device it plays on.
     private(set) var fileSampleRate: Int?
     private(set) var deviceSampleRate: Int?
@@ -137,6 +177,7 @@ final class Player {
         let status = mpv_initialize(mpv)
         guard status >= 0 else { fatalError("mpv_initialize: \(String(cString: mpv_error_string(status)))") }
         setDouble("volume", volume)
+        applyEqualizer()
 
         for (name, format) in [
             ("time-pos", MPV_FORMAT_DOUBLE), ("duration", MPV_FORMAT_DOUBLE),
@@ -526,6 +567,7 @@ final class Player {
                         }
                         self.position = 0
                         self.lastSavedSecond = -1
+                        self.applyEqualizer()
                     }
                 }
             case MPV_EVENT_END_FILE:

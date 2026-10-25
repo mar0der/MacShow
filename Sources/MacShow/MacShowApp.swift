@@ -87,6 +87,7 @@ struct MacShowApp: App {
             }
             CommandGroup(before: .windowList) {
                 OpenWindowButton(title: "Mini Player", id: "mini").keyboardShortcut("m", modifiers: [.command, .shift])
+                OpenWindowButton(title: "Equalizer", id: "equalizer").keyboardShortcut("e", modifiers: [.command, .option])
                 OpenWindowButton(title: "Library", id: "main").keyboardShortcut("1")
                 Divider()
             }
@@ -102,6 +103,13 @@ struct MacShowApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .noRestoration()
+
+        Window("Equalizer", id: "equalizer") {
+            EqualizerView()
+                .environment(player)
+                .preferredColorScheme(.dark)
+        }
+        .windowResizability(.contentSize)
 
         WindowGroup("Get Info", id: "info", for: [Int64].self) { $ids in
             InfoView(ids: ids ?? [])
