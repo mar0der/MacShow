@@ -424,6 +424,48 @@ public final class Library {
         writeQueue.async { try? database.clearPosition(for: id) }
     }
 
+    // MARK: Recaps and credits
+
+    /// Where each show's recap or intro ends and its credits start, marked
+    /// while watching. Keyed by show id.
+    public private(set) var showMarkers: [String: ShowMarkers] = {
+        UserDefaults.standard.data(forKey: "showMarkers").flatMap { try? JSONDecoder().decode([String: ShowMarkers].self, from: $0) } ?? [:]
+    }()
+
+    public func markers(for item: MediaItem) -> ShowMarkers? {
+        item.kind == .episode ? showMarkers[Show.id(for: item)] : nil
+    }
+
+    /// Recap/intro ends at `position` in this show's episodes (nil clears it).
+    public func setRecapEnd(_ position: Double?, for item: MediaItem) {
+        updateMarkers(for: item) { $0.recapEnd = position }
+    }
+
+    /// Credits start `position` into an episode `duration` long: kept as the
+    /// time before the end, which carries over to episodes of other lengths.
+    public func setCreditsStart(_ position: Double?, duration: Double, for item: MediaItem) {
+        updateMarkers(for: item) { $0.creditsLength = position.map { max(0, duration - $0) } }
+    }
+
+    private func updateMarkers(for item: MediaItem, _ change: (inout ShowMarkers) -> Void) {
+        guard item.kind == .episode else { return }
+        let id = Show.id(for: item)
+        var markers = showMarkers[id] ?? ShowMarkers()
+        change(&markers)
+        showMarkers[id] = markers.recapEnd == nil && markers.creditsLength == nil ? nil : markers
+        UserDefaults.standard.set(try? JSONEncoder().encode(showMarkers), forKey: "showMarkers")
+    }
+
+    /// What to watch after the last episode of `show`: the episode to pick up
+    /// in another show you're watching, else the first unwatched episode of
+    /// another show.
+    public func nextShow(after showID: String) -> MediaItem? {
+        if let next = continueWatching.first(where: { $0.kind == .episode && Show.id(for: $0) != showID }) { return next }
+        return index.shows.lazy.filter { $0.id != showID }.compactMap { show in
+            show.episodes.first { episode in episode.id.flatMap { self.positions[$0] }?.isFinished != true }
+        }.first
+    }
+
     /// Items taken off Continue Watching, and when. One comes back once it's
     /// played again (its resume point is newer than this).
     public private(set) var removedFromContinueWatching: [Int64: Date] = {

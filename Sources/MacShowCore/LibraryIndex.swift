@@ -27,6 +27,14 @@ public struct Artist: Identifiable, Hashable, Sendable {
     public var artworkKey: String? { albums.lazy.compactMap(\.artworkKey).first ?? songs.lazy.compactMap(\.artworkKey).first }
 }
 
+/// Where a show's recap or intro ends (seconds from the start) and how long
+/// its credits run (seconds before the end).
+public struct ShowMarkers: Codable, Hashable, Sendable {
+    public var recapEnd: Double?
+    public var creditsLength: Double?
+    public init() {}
+}
+
 public struct Show: Identifiable, Hashable, Sendable {
     public var id: String
     public var title: String
@@ -34,6 +42,9 @@ public struct Show: Identifiable, Hashable, Sendable {
     /// In season, episode order.
     public var episodes: [MediaItem]
     public var seasons: [Int] { Array(Set(episodes.compactMap(\.season))).sorted() }
+
+    /// The id of the show an episode belongs to.
+    public static func id(for episode: MediaItem) -> String { (episode.show ?? "Unknown Show").lowercased() }
 }
 
 /// An audiobook: one file with chapters, or a folder of files played in order.
@@ -168,7 +179,7 @@ public struct LibraryIndex: Sendable {
 
         movies = (byKind[.movie] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         homeVideos = (byKind[.homeVideo] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        shows = Dictionary(grouping: byKind[.episode] ?? []) { ($0.show ?? "Unknown Show").lowercased() }
+        shows = Dictionary(grouping: byKind[.episode] ?? [], by: Show.id(for:))
             .map { key, episodes in
                 let sorted = episodes.sorted { ($0.season ?? 0, $0.episode ?? 0) < ($1.season ?? 0, $1.episode ?? 0) }
                 return Show(id: key, title: sorted[0].show ?? "Unknown Show",
