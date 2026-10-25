@@ -17,6 +17,13 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
   browse; Up Next at the end of an episode, Skip Intro on intro chapters.
 - **Audiobooks.** Chaptered M4B files or folders of MP3s, chapters, speed,
   sleep timer, bookmarks, resume to the second.
+- **Yours to keep.** Edit titles, artists and artwork with Get Info (stored in
+  MacShow, never written into your files). Import playlists from the Music app's
+  exported library or M3U, export any playlist as M3U. Settings › Content lists
+  any copy-protected (DRM) files and what they are.
+- **Sound.** Bit-perfect output that switches your DAC to each file's sample rate
+  (Settings › Playback), a 10-band equalizer with presets and per-album settings
+  (⌥⌘E), drag to reorder Up Next. Audiobooks sort by title, author or recently played.
 - **Content kept apart.** Right-click a video to mark its folder as Personal
   (Home Videos), Adult (hidden everywhere; its own section after Touch ID, locked
   again at every launch) or Never Scan, or hide single files. Settings › Content
