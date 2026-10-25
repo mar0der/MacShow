@@ -7,6 +7,7 @@ import SwiftUI
 ///   -debugPlayAlbum "Kamikaze"   starts playing it
 ///   -debugOpenWindow mini        opens a window by id
 ///   -debugInfoAlbum "Kamikaze"   opens Get Info for its tracks
+///   -debugInfoTitle "Iron Man"   opens Get Info for items with that title
 ///   -debugMoveQueue "4,1"        moves queue entry 4 before 1 and logs both orders
 ///   -debugShow "Name" -debugOpenShow YES / -debugPlayShow YES
 struct DebugHooks: ViewModifier {
@@ -60,6 +61,9 @@ struct DebugHooks: ViewModifier {
         }
         if let id = defaults.string(forKey: "debugOpenWindow") { openWindow(id: id) }
         if let album = album("debugInfoAlbum") { openWindow(id: "info", value: album.tracks.compactMap(\.id)) }
+        if let title = defaults.string(forKey: "debugInfoTitle") {
+            openWindow(id: "info", value: library.index.itemsByID.values.filter { $0.title == title }.compactMap(\.id))
+        }
         if defaults.bool(forKey: "debugOpenSettings") { openSettings() }
         if defaults.bool(forKey: "debugLogPlayer") {
             Task {

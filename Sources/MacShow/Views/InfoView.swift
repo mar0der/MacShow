@@ -11,6 +11,7 @@ struct InfoView: View {
     @State private var changed: Set<Field> = []
     @State private var artworkKey: String?
     @State private var loaded = false
+    @State private var searchingArtwork = false
 
     enum Field: String, CaseIterable {
         case title = "Title", artist = "Artist", album = "Album", albumArtist = "Album Artist", genre = "Genre", year = "Year"
@@ -29,7 +30,10 @@ struct InfoView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(items.count == 1 ? items[0].url.lastPathComponent : "\(items.count) items")
                         .font(.headline).lineLimit(2)
-                    Button("Choose Artwork…", action: chooseArtwork)
+                    HStack {
+                        Button("Find Artwork Online…") { searchingArtwork = true }
+                        Button("Choose File…", action: chooseArtwork)
+                    }
                     Text("Saved in MacShow only; your files aren't changed.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -57,6 +61,11 @@ struct InfoView: View {
             .padding()
         }
         .frame(width: 460)
+        .sheet(isPresented: $searchingArtwork) {
+            ArtworkSearchView(kind: Self.searchKind(items), term: Self.searchTerm(items)) { data in
+                artworkKey = library.artwork.store(data)
+            }
+        }
         .onAppear {
             guard !loaded else { return }
             loaded = true
@@ -122,6 +131,28 @@ struct InfoView: View {
             if let artworkKey { edit.artworkKey = artworkKey }
             return edit
         })
+    }
+
+    static func searchKind(_ items: [MediaItem]) -> ArtworkFetcher.SearchKind {
+        switch items.first?.kind {
+        case .episode: .tvShow
+        case .movie, .homeVideo: .movie
+        case .musicVideo: .musicVideo
+        default: .album
+        }
+    }
+
+    /// What to search for: the show, the movie's name and year, or artist and album.
+    static func searchTerm(_ items: [MediaItem]) -> String {
+        guard let item = items.first else { return "" }
+        switch item.kind {
+        case .episode: return item.show ?? item.title
+        case .movie, .homeVideo: return [item.title, item.year.map(String.init)].compactMap { $0 }.joined(separator: " ")
+        case .musicVideo: return [item.artist, item.title].compactMap { $0 }.joined(separator: " ")
+        // Untagged albums are named after their folder, as in the library.
+        default: return [item.albumArtist ?? item.artist, item.album ?? item.url.deletingLastPathComponent().lastPathComponent]
+            .compactMap { $0 }.joined(separator: " ")
+        }
     }
 
     private func chooseArtwork() {

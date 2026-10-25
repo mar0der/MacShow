@@ -17,7 +17,14 @@ struct ArtworkView: View {
             .aspectRatio(aspectRatio, contentMode: .fit)
             .overlay {
                 if let image {
-                    Image(nsImage: image).resizable().scaledToFill()
+                    if abs(image.size.width / max(image.size.height, 1) - aspectRatio) > 0.4 {
+                        // A tall poster in a wide tile: whole, over a blurred copy of itself.
+                        Image(nsImage: image).resizable().scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background { Image(nsImage: image).resizable().scaledToFill().blur(radius: 24).opacity(0.6) }
+                    } else {
+                        Image(nsImage: image).resizable().scaledToFill()
+                    }
                 } else {
                     placeholder
                 }

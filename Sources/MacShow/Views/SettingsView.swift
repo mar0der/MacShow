@@ -20,6 +20,7 @@ struct LibrarySettings: View {
     @State private var selection: WatchedFolder.ID?
     @State private var addingNetworkFolder = false
     @AppStorage(Library.fetchArtworkKey) private var fetchArtwork = true
+    @AppStorage(ArtworkFetcher.tmdbKeyDefault) private var tmdbKey = ""
 
     var body: some View {
         Form {
@@ -76,6 +77,13 @@ struct LibrarySettings: View {
                 Toggle("Download missing album artwork", isOn: $fetchArtwork)
             } footer: {
                 Text("Looks up covers for albums that have none on the iTunes Store. Only album and artist names are sent.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Section {
+                SecureField("TMDB API key", text: $tmdbKey, prompt: Text("Optional"))
+            } footer: {
+                Text("Posters and wide artwork for movies and shows in Get Info › Find Artwork Online, from themoviedb.org. A free key comes with a TMDB account (Settings › API). Without one, Wikipedia is used.")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

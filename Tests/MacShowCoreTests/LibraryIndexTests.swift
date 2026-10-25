@@ -256,3 +256,47 @@ struct CategoryTests {
         #expect(index.musicVideos.map(\.id) == [2])
     }
 }
+
+struct ArtworkSuggestionTests {
+    @Test func readsTMDBPostersAndBackdrops() {
+        let json = #"{"results":[{"title":"Iron Man","release_date":"2008-04-30","poster_path":"/p.jpg","backdrop_path":"/b.jpg"},{"name":"Yellowstone","first_air_date":"2018-06-20","poster_path":"/y.jpg"}]}"#
+        let found = ArtworkFetcher.tmdbSuggestions(from: Data(json.utf8))
+        #expect(found.map(\.detail) == ["2008 · Poster", "2008 · Wide", "2018 · Poster"])
+        #expect(found[1].image.absoluteString == "https://image.tmdb.org/t/p/w1280/b.jpg")
+        #expect(found[2].title == "Yellowstone")
+    }
+
+    @Test func readsDeezerCovers() {
+        let json = #"{"data":[{"title":"Kamikaze","artist":{"name":"Eminem"},"cover_medium":"https://x/250.jpg","cover_xl":"https://x/1000.jpg"},{"title":"No Cover"}]}"#
+        let found = ArtworkFetcher.deezerSuggestions(from: Data(json.utf8))
+        #expect(found.map(\.title) == ["Kamikaze"])
+        #expect(found[0].image.absoluteString == "https://x/1000.jpg" && found[0].detail == "Eminem")
+    }
+
+    @Test func readsWikipediaPosters() {
+        let json = """
+        {"query":{"pages":{
+          "2":{"index":2,"title":"Iron Man 2","description":"2010 film","original":{"source":"https://upload.wikimedia.org/b.jpg"}},
+          "1":{"index":1,"title":"Iron Man (2008 film)","description":"Marvel Studios film","thumbnail":{"source":"https://upload.wikimedia.org/a-300.jpg"},"original":{"source":"https://upload.wikimedia.org/a.jpg"}},
+          "3":{"index":3,"title":"Iron Man (franchise)"}
+        }}}
+        """
+        let found = ArtworkFetcher.wikipediaSuggestions(from: Data(json.utf8))
+        #expect(found.map(\.title) == ["Iron Man (2008 film)", "Iron Man 2"])
+        #expect(found[0].thumbnail.lastPathComponent == "a-300.jpg" && found[1].thumbnail == found[1].image)
+    }
+
+    @Test func readsSearchResults() {
+        let json = """
+        {"resultCount":3,"results":[
+          {"wrapperType":"collection","collectionName":"Yellowstone, Season 3","artistName":"Yellowstone","releaseDate":"2020-06-21T07:00:00Z","artworkUrl100":"https://is1.mzstatic.com/a/100x100bb.jpg"},
+          {"wrapperType":"track","trackName":"Iron Man","artistName":"Jon Favreau","releaseDate":"2008-05-02T07:00:00Z","artworkUrl100":"https://is1.mzstatic.com/b/100x100bb.jpg"},
+          {"wrapperType":"track","trackName":"No Art"}
+        ]}
+        """
+        let found = ArtworkFetcher.suggestions(from: Data(json.utf8))
+        #expect(found.map(\.title) == ["Yellowstone, Season 3", "Iron Man"])
+        #expect(found[1].detail == "Jon Favreau · 2008")
+        #expect(found[0].image.absoluteString == "https://is1.mzstatic.com/a/1000x1000bb.jpg")
+    }
+}

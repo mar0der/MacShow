@@ -38,10 +38,15 @@ struct MacShowApp: App {
                 .environment(player)
                 .preferredColorScheme(.dark)
                 .onAppear {
-                    // `MacShow <file>` plays that file on launch.
-                    if let path = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") && FileManager.default.fileExists(atPath: $0) }) {
-                        player.open(URL(fileURLWithPath: path))
-                    }
+                    // `MacShow <file>` plays that file on launch. Only a media file: the
+                    // value of an option (`-sidebarSelection movies`) can name a folder too.
+                    let arguments = Array(CommandLine.arguments.dropFirst())
+                    let path = arguments.indices.first { index in
+                        let argument = arguments[index]
+                        return !argument.hasPrefix("-") && (index == 0 || !arguments[index - 1].hasPrefix("-"))
+                            && Classifier.isMediaFile(URL(fileURLWithPath: argument)) && FileManager.default.fileExists(atPath: argument)
+                    }.map { arguments[$0] }
+                    if let path { player.open(URL(fileURLWithPath: path)) }
                 }
         }
         .defaultSize(width: 1280, height: 800)
