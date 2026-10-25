@@ -31,12 +31,25 @@ struct VideoGridView: View {
 struct VideoStill: View {
     let item: MediaItem
     var cornerRadius: CGFloat = 8
+    /// An official still (TMDB) to show instead of a frame from the file.
+    var still: URL?
     @Environment(Library.self) private var library
     @State private var stillKey: String?
 
     var body: some View {
         // Episodes show their own still; a poster chosen for them is the show's.
-        ArtworkView(key: (item.kind == .episode ? nil : item.artworkKey) ?? stillKey, title: item.title, cornerRadius: cornerRadius, aspectRatio: 16 / 9)
+        let frame = ArtworkView(key: (item.kind == .episode ? nil : item.artworkKey) ?? stillKey, title: item.title, cornerRadius: cornerRadius, aspectRatio: 16 / 9)
+        Group {
+            if let still {
+                AsyncImage(url: still) { image in
+                    Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+                        .overlay { image.resizable().scaledToFill() }
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                } placeholder: { frame }
+            } else {
+                frame
+            }
+        }
             .opacity(library.isAvailable(item) ? 1 : 0.4)
             .overlay {
                 if !library.isAvailable(item) {
@@ -212,67 +225,110 @@ struct ShowArtwork: View {
     }
 }
 
+/// A show's page, laid out like the streaming apps: a wide picture with Resume,
+/// what it's about, the season's episodes with stills and summaries, and the
+/// cast. Details come from TMDB when there's a key (Settings › Library).
 struct ShowDetailView: View {
     let show: Show
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
     @State private var season: Int?
     @State private var details: MediaDetails?
+    @State private var seasonDetails: MediaDetails?
 
     var body: some View {
-        let selectedSeason = season ?? nextUp?.season ?? show.seasons.first
+        let selectedSeason = season ?? nextUp?.season ?? show.seasons.first ?? 1
         let episodes = show.episodes.filter { $0.season == selectedSeason }
+        let info = Dictionary((seasonDetails?.episodes ?? []).map { ($0.number, $0) }, uniquingKeysWith: { first, _ in first })
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .bottom, spacing: 24) {
-                    VideoStill(item: nextUp ?? show.episodes[0], cornerRadius: 10)
-                        .frame(width: 360)
-                        .shadow(color: .black.opacity(0.4), radius: 14, y: 6)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(show.title).font(.largeTitle.weight(.bold))
-                        Text(([details?.year.map(String.init), (details?.seasons.map { "\(show.seasons.count) of \($0) seasons" } ?? "\(show.seasons.count) seasons") + " · \(show.episodes.count) episodes",
-                               details?.rating.map { String(format: "★ %.1f", $0) }, details?.genres.prefix(3).joined(separator: ", ")]
-                            as [String?]).compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                            .foregroundStyle(.secondary)
-                        if let overview = details?.overview {
-                            Text(overview).frame(maxWidth: 640, alignment: .leading).lineLimit(4).fixedSize(horizontal: false, vertical: true)
-                                .help(overview)
-                        }
-                        if let makers = details?.makers, !makers.isEmpty {
-                            Text("Created by " + makers.joined(separator: ", ")).font(.callout).foregroundStyle(.secondary)
-                        }
-                        if let next = nextUp {
-                            Button {
-                                player.play(show.episodes, startAt: show.episodes.firstIndex(of: next) ?? 0)
-                            } label: {
-                                Label(resumeLabel(next), systemImage: "play.fill")
+            VStack(alignment: .leading, spacing: 24) {
+                hero
+                VStack(alignment: .leading, spacing: 20) {
+                    if let overview = details?.overview {
+                        Text(overview).frame(maxWidth: 720, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let makers = details?.makers, !makers.isEmpty {
+                        Text("Created by " + makers.joined(separator: ", ")).foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Episodes").font(.title3.weight(.semibold))
+                        Spacer()
+                        if show.seasons.count > 1 {
+                            Picker("Season", selection: Binding(get: { selectedSeason }, set: { season = $0 })) {
+                                ForEach(show.seasons, id: \.self) { Text("Season \($0)").tag($0) }
                             }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
-                            .padding(.top, 8)
+                            .labelsHidden()
+                            .fixedSize()
+                        } else {
+                            Text("Season \(selectedSeason)").foregroundStyle(.secondary)
                         }
                     }
-                }
-                if show.seasons.count > 1 {
-                    Picker("Season", selection: Binding(get: { selectedSeason ?? 1 }, set: { season = $0 })) {
-                        ForEach(show.seasons, id: \.self) { Text("Season \($0)").tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .fixedSize()
-                }
-                LazyVStack(spacing: 14) {
-                    ForEach(episodes) { episode in
-                        EpisodeRow(episode: episode) {
-                            player.play(show.episodes, startAt: show.episodes.firstIndex(of: episode) ?? 0)
+                    LazyVStack(spacing: 4) {
+                        ForEach(episodes) { episode in
+                            EpisodeRow(episode: episode, info: episode.episode.flatMap { info[$0] }) { play(episode) }
+                                .contextMenu { VideoMenu(item: episode, queue: show.episodes) }
                         }
-                        .contextMenu { VideoMenu(item: episode, queue: show.episodes) }
                     }
+                    if let cast = details?.cast, !cast.isEmpty { CastRow(cast: cast).padding(.top, 8) }
+                }
+                .padding(.horizontal, 28)
+            }
+            .padding(.bottom, 28)
+        }
+        .navigationTitle(show.title)
+        .task(id: show.id) { details = await library.details(for: show.episodes[0]) }
+        .task(id: "\(show.id):\(selectedSeason)") {
+            seasonDetails = nil
+            seasonDetails = await library.details(of: show, season: selectedSeason)
+        }
+    }
+
+    private var hero: some View {
+        let still = VideoStill(item: show.episodes[0], cornerRadius: 0).aspectRatio(16 / 9, contentMode: .fill)
+        return ZStack(alignment: .bottomLeading) {
+            Group {
+                if let backdrop = details?.backdrop {
+                    AsyncImage(url: backdrop) { image in image.resizable().scaledToFill() } placeholder: { still }
+                } else {
+                    still
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 420)
+            .clipped()
+            .overlay(LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .center, endPoint: .bottom))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(details?.title ?? show.title).font(.system(size: 40, weight: .bold))
+                Text(metadata).foregroundStyle(.secondary)
+                if let next = nextUp {
+                    HStack(spacing: 10) {
+                        Button { play(next) } label: {
+                            Label(resumeLabel(next), systemImage: "play.fill").frame(minWidth: 90)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        if let saved = next.id.flatMap({ library.positions[$0] }), saved.isResumable {
+                            Text("\(Format.duration(saved.remaining)) left").foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.top, 6)
                 }
             }
             .padding(28)
         }
-        .navigationTitle(show.title)
-        .task(id: show.id) { details = await library.details(for: show.episodes[0]) }
+    }
+
+    /// "2018 · 2 of 5 seasons · 20 episodes · ★ 8.3 · Western, Drama"
+    private var metadata: String {
+        let seasons = details?.seasons.map { String(localized: "\(show.seasons.count) of \($0) seasons") } ?? String(localized: "\(show.seasons.count) seasons")
+        return [details?.year.map(String.init), seasons, String(localized: "\(show.episodes.count) episodes"),
+                details?.rating.map { String(format: "★ %.1f", $0) }, details?.genres.prefix(3).joined(separator: ", ")]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    private func play(_ episode: MediaItem) {
+        player.play(show.episodes, startAt: show.episodes.firstIndex(of: episode) ?? 0)
     }
 
     /// The episode to continue with: one in progress, else the first unwatched.
@@ -289,34 +345,56 @@ struct ShowDetailView: View {
     }
 }
 
+/// An episode in a show's list: still, number and title, length or time left, and summary.
 struct EpisodeRow: View {
     let episode: MediaItem
+    /// TMDB's title, summary and still for it, when known.
+    var info: MediaDetails.Episode?
     let play: () -> Void
     @Environment(Library.self) private var library
+    @State private var hovering = false
 
     var body: some View {
         Button(action: play) {
-            HStack(spacing: 16) {
-                VideoStill(item: episode, cornerRadius: 6).frame(width: 192)
-                VStack(alignment: .leading, spacing: 4) {
-                    let number = "Episode \(episode.episode ?? 0)"
-                    if episode.title != number {
-                        Text(number).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 16) {
+                VideoStill(item: episode, cornerRadius: 6, still: info?.still)
+                    .frame(width: 220)
+                    .overlay {
+                        if hovering {
+                            Image(systemName: "play.circle.fill").font(.system(size: 36)).foregroundStyle(.white).shadow(radius: 6)
+                        }
                     }
-                    Text(episode.title).font(.headline).lineLimit(1)
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(heading).font(.headline).lineLimit(1)
+                        Spacer()
+                        Text(detail).font(.callout).foregroundStyle(.secondary)
+                    }
+                    if let overview = info?.overview {
+                        Text(overview).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+                    }
                 }
-                Spacer()
+                .padding(.top, 4)
             }
+            .padding(10)
+            .background(.primary.opacity(hovering ? 0.06 : 0), in: RoundedRectangle(cornerRadius: 10))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+
+    /// "3. Title": the file's title, or TMDB's when the file only says "Episode 3".
+    private var heading: String {
+        let number = episode.episode ?? 0
+        let name = episode.title == "Episode \(number)" ? info?.title : episode.title
+        return name.map { "\(number). \($0)" } ?? String(localized: "Episode \(number)")
     }
 
     private var detail: String {
         if let saved = episode.id.flatMap({ library.positions[$0] }), saved.isResumable {
             return String(localized: "\(Format.duration(saved.remaining)) left")
         }
-        return Format.duration(episode.duration)
+        return info?.runtimeMinutes.map { Format.duration(Double($0 * 60)) } ?? Format.duration(episode.duration)
     }
 }

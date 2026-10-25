@@ -278,7 +278,7 @@
 "Recently Added" = "Наскоро добавени";
 "Recently Played" = "Наскоро слушани";
 "Remove Folder" = "Премахване на папката";
-"Remove from Continue Watching" = "Премахване от „Продължете“";
+"Remove from Jump Back In" = "Премахване от „Продължете оттам“";
 "Remove from Favorites" = "Премахване от „Любими“";
 "Remove from Playlist" = "Премахване от плейлиста";
 "Remove from Queue" = "Премахване от опашката";
@@ -356,3 +356,8 @@
 "While listening, click Bookmark to save your place." = "Докато слушате, натиснете „Отметка“, за да запазите мястото.";
 "macOS normally resamples everything to the rate set in Audio MIDI Setup. With this on, MacShow takes the audio device for itself and switches it to each file's own sample rate, so lossless and hi-res files reach your DAC untouched (keep the volume at 100% and the equalizer off for that). Other apps can't play sound while MacShow is playing." = "Обикновено macOS преобразува всичко към честотата от Audio MIDI Setup. С тази настройка MacShow заема аудиоустройството и го превключва на честотата на всеки файл, така че файловете без загуби и с висока резолюция стигат до DAC-а непроменени (за това дръжте звука на 100% и еквалайзера изключен). Другите приложения нямат звук, докато MacShow свири.";
 "smb://nas.local/Media" = "smb://nas.local/Media";
+"%lld episodes" = "%lld епизода";
+"%lld of %lld seasons" = "%lld от %lld сезона";
+"%lld seasons" = "%lld сезона";
+"Episode %lld" = "Епизод %lld";
+"Episodes" = "Епизоди";

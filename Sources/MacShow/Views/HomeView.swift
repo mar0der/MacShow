@@ -87,9 +87,10 @@ struct JumpBackInCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(RemoveFromJumpBackIn { library.removeFromContinueWatching(item) })
         .contextMenu {
             Button("Play") { play() }
-            Button("Remove from Continue Watching") { library.removeFromContinueWatching(item) }
+            Button("Remove from Jump Back In") { library.removeFromContinueWatching(item) }
             Divider()
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
         }
@@ -144,6 +145,29 @@ struct BookJumpCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(RemoveFromJumpBackIn { library.removeFromContinueWatching(book) })
+        .contextMenu { Button("Remove from Jump Back In") { library.removeFromContinueWatching(book) } }
+    }
+}
+
+/// The × in a "Jump back in" card's corner (on hover), for something you won't finish.
+private struct RemoveFromJumpBackIn: ViewModifier {
+    let remove: () -> Void
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .topTrailing) {
+                if hovering {
+                    Button(action: remove) {
+                        Image(systemName: "xmark.circle.fill").font(.title3).symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove from Jump Back In")
+                    .padding(6)
+                }
+            }
+            .onHover { hovering = $0 }
     }
 }
 

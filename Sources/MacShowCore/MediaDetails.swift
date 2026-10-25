@@ -23,6 +23,16 @@ public struct MediaDetails: Codable, Hashable, Sendable {
     public var cast: [Person] = []
     public var backdrop: URL?
     public var poster: URL?
+    /// A season's episodes (TMDB's season details).
+    public var episodes: [Episode]?
+
+    public struct Episode: Codable, Hashable, Sendable {
+        public var number: Int
+        public var title: String?
+        public var overview: String?
+        public var still: URL?
+        public var runtimeMinutes: Int?
+    }
 }
 
 extension ArtworkFetcher {
@@ -36,17 +46,31 @@ extension ArtworkFetcher {
         await details(path: "tv", query: name, yearKey: "first_air_date_year", year: nil)
     }
 
-    private func details(path: String, query: String, yearKey: String, year: Int?) async -> MediaDetails? {
+    /// A season's episode names, summaries and stills, the show matched by name.
+    public func seasonDetails(name: String, season: Int) async -> MediaDetails? {
+        guard let tmdbKey, let id = await tmdbID(path: "tv", query: name, yearKey: "first_air_date_year", year: nil) else { return nil }
+        var detail = URLComponents(string: "https://api.themoviedb.org/3/tv/\(id)/season/\(season)")!
+        detail.queryItems = [.init(name: "api_key", value: tmdbKey)]
+        guard let url = detail.url, let (body, reply) = try? await session.data(from: url), (reply as? HTTPURLResponse)?.statusCode == 200
+        else { return nil }
+        return Self.seasonDetails(from: body)
+    }
+
+    private func tmdbID(path: String, query: String, yearKey: String, year: Int?) async -> Int? {
         guard let tmdbKey else { return nil }
         var search = URLComponents(string: "https://api.themoviedb.org/3/search/\(path)")!
         search.queryItems = [.init(name: "api_key", value: tmdbKey), .init(name: "query", value: query)]
             + (year.map { [URLQueryItem(name: yearKey, value: String($0))] } ?? [])
         struct Hit: Decodable { var id: Int }
         struct Hits: Decodable { var results: [Hit] }
-        guard let url = search.url, let (data, reply) = try? await session.data(from: url), (reply as? HTTPURLResponse)?.statusCode == 200,
-              let first = try? JSONDecoder().decode(Hits.self, from: data).results.first
+        guard let url = search.url, let (data, reply) = try? await session.data(from: url), (reply as? HTTPURLResponse)?.statusCode == 200
         else { return nil }
-        var detail = URLComponents(string: "https://api.themoviedb.org/3/\(path)/\(first.id)")!
+        return (try? JSONDecoder().decode(Hits.self, from: data))?.results.first?.id
+    }
+
+    private func details(path: String, query: String, yearKey: String, year: Int?) async -> MediaDetails? {
+        guard let tmdbKey, let id = await tmdbID(path: path, query: query, yearKey: yearKey, year: year) else { return nil }
+        var detail = URLComponents(string: "https://api.themoviedb.org/3/\(path)/\(id)")!
         detail.queryItems = [.init(name: "api_key", value: tmdbKey), .init(name: "append_to_response", value: "credits")]
         guard let detailURL = detail.url, let (body, detailReply) = try? await session.data(from: detailURL),
               (detailReply as? HTTPURLResponse)?.statusCode == 200
@@ -96,6 +120,21 @@ extension ArtworkFetcher {
             },
             backdrop: response.backdrop_path.flatMap { URL(string: image + "w1280" + $0) },
             poster: response.poster_path.flatMap { URL(string: image + "w500" + $0) }
+        )
+    }
+
+    static func seasonDetails(from data: Data) -> MediaDetails? {
+        struct Episode: Decodable { var episode_number: Int; var name: String?; var overview: String?; var still_path: String?; var runtime: Int? }
+        struct Response: Decodable { var name: String?; var overview: String?; var episodes: [Episode]? }
+        guard let response = try? JSONDecoder().decode(Response.self, from: data), let episodes = response.episodes else { return nil }
+        func text(_ value: String?) -> String? { value.flatMap { $0.isEmpty ? nil : $0 } }
+        return MediaDetails(
+            title: response.name ?? "", overview: text(response.overview),
+            episodes: episodes.map { episode in
+                MediaDetails.Episode(number: episode.episode_number, title: text(episode.name), overview: text(episode.overview),
+                                     still: episode.still_path.flatMap { URL(string: "https://image.tmdb.org/t/p/w500" + $0) },
+                                     runtimeMinutes: episode.runtime)
+            }
         )
     }
 }

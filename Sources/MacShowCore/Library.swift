@@ -497,6 +497,17 @@ public final class Library {
         return found
     }
 
+    /// A season's episode titles, summaries and stills from TMDB, looked up once.
+    public func details(of show: Show, season: Int) async -> MediaDetails? {
+        let key = "tv:\(show.id):season:\(season)"
+        let database = database
+        if let cached = try? database.cachedDetails(key) { return cached }
+        let fetcher = ArtworkFetcher(tmdbKey: UserDefaults.standard.string(forKey: ArtworkFetcher.tmdbKeyDefault))
+        let found = await fetcher.seasonDetails(name: show.title, season: season)
+        if let found { try? database.cacheDetails(found, key: key) }
+        return found
+    }
+
     /// Settings key: look up artist bios (Wikipedia) and book details (Open Library), default on.
     nonisolated public static let fetchInfoKey = "fetchArtistAndBookInfo"
 
@@ -620,8 +631,15 @@ public final class Library {
     }()
 
     public func removeFromContinueWatching(_ item: MediaItem) {
-        guard let id = item.id else { return }
-        removedFromContinueWatching[id] = Date()
+        removeFromContinueWatching(parts: [item])
+    }
+
+    public func removeFromContinueWatching(_ book: Book) {
+        removeFromContinueWatching(parts: book.parts)
+    }
+
+    private func removeFromContinueWatching(parts: [MediaItem]) {
+        for id in parts.compactMap(\.id) { removedFromContinueWatching[id] = Date() }
         UserDefaults.standard.set(
             Dictionary(uniqueKeysWithValues: removedFromContinueWatching.map { (String($0.key), $0.value.timeIntervalSince1970) }),
             forKey: "removedFromContinueWatching"
@@ -654,7 +672,10 @@ public final class Library {
     public var booksInProgress: [Book] {
         index.books
             .map { ($0, BookProgress(book: $0, positions: positions)) }
-            .filter { $0.1.isStarted && !$0.1.isFinished }
+            .filter { book, progress in
+                guard progress.isStarted, !progress.isFinished, let listened = progress.lastListened else { return false }
+                return !book.parts.contains { part in part.id.flatMap { removedFromContinueWatching[$0] }.map { $0 >= listened } ?? false }
+            }
             .sorted { ($0.1.lastListened ?? .distantPast) > ($1.1.lastListened ?? .distantPast) }
             .map(\.0)
     }

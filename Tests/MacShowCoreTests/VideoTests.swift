@@ -78,6 +78,22 @@ struct VideoTests {
         library.savePosition(1300, duration: 6000, for: film)
         #expect(library.continueWatching.map(\.path) == [film.path])
     }
+
+    @MainActor
+    @Test func removedBooksLeaveJumpBackInUntilPlayedAgain() async throws {
+        let database = try LibraryDatabase.inMemory()
+        try database.upsert([makeItem("/books/b-\(UUID()).m4b", kind: .audiobook, album: "A Book")])
+        let library = Library(database: database, artwork: ArtworkStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("art-\(UUID())")))
+        for _ in 0..<50 where library.index.books.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        let book = try #require(library.index.books.first)
+
+        library.savePosition(20, duration: 60, for: book.parts[0])
+        library.removeFromContinueWatching(book)
+        #expect(library.booksInProgress.isEmpty)
+        try await Task.sleep(for: .milliseconds(10))
+        library.savePosition(25, duration: 60, for: book.parts[0])
+        #expect(library.booksInProgress.map(\.id) == [book.id])
+    }
 }
 
 struct SubtitleFinderTests {
@@ -141,6 +157,16 @@ struct MediaDetailsTests {
         let yellowstone = try #require(ArtworkFetcher.mediaDetails(from: Data(show.utf8)))
         #expect(yellowstone.seasons == 5 && yellowstone.makers == ["Taylor Sheridan"])
         #expect(yellowstone.rating == nil && yellowstone.overview == nil && yellowstone.runtimeMinutes == nil)
+    }
+
+    @Test func readsSeasonEpisodes() throws {
+        let season = #"{"name":"Season 3","episodes":[{"episode_number":1,"name":"You're the Indian Now","overview":"John learns...","still_path":"/s1.jpg","runtime":48,"air_date":"2020-06-21"},{"episode_number":2,"name":"","overview":"","still_path":null}]}"#
+        let details = try #require(ArtworkFetcher.seasonDetails(from: Data(season.utf8)))
+        let episodes = try #require(details.episodes)
+        #expect(episodes.map(\.number) == [1, 2])
+        #expect(episodes[0].title == "You're the Indian Now" && episodes[0].runtimeMinutes == 48)
+        #expect(episodes[0].still?.absoluteString == "https://image.tmdb.org/t/p/w500/s1.jpg")
+        #expect(episodes[1].title == nil && episodes[1].overview == nil && episodes[1].still == nil)
     }
 
     @Test func cachesDetails() throws {
