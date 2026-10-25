@@ -180,7 +180,14 @@ final class Player {
     /// The video keeps playing in a corner while you browse the library.
     /// Starting something new brings it back full size.
     var isVideoMinimized = false
-    var hasMedia: Bool { duration > 0 || currentItem != nil || liveChannel != nil }
+    var hasMedia: Bool { duration > 0 || currentItem != nil || liveChannel != nil || radioStation != nil }
+    /// Your stations (favorites, recently played), told what plays.
+    @ObservationIgnored weak var radio: Radio?
+    /// The radio station playing, and the stations Next and Previous switch between.
+    private(set) var radioStation: RadioStation?
+    @ObservationIgnored private var radioStations: [RadioStation] = []
+    /// What a stream says is on ("Artist - Song"), for radio.
+    private(set) var streamTitle: String?
     /// The live TV channel playing, and the channels Next and Previous switch between.
     private(set) var liveChannel: LiveChannel?
     @ObservationIgnored private var liveChannels: [LiveChannel] = []
@@ -225,6 +232,7 @@ final class Player {
             ("track-list/count", MPV_FORMAT_INT64), ("sid", MPV_FORMAT_STRING), ("aid", MPV_FORMAT_STRING),
             ("chapter", MPV_FORMAT_INT64),
             ("audio-params/samplerate", MPV_FORMAT_INT64), ("audio-out-params/samplerate", MPV_FORMAT_INT64),
+            ("metadata/by-key/icy-title", MPV_FORMAT_STRING),
             ("demuxer-cache-time", MPV_FORMAT_DOUBLE), ("paused-for-cache", MPV_FORMAT_FLAG), ("cache-buffering-state", MPV_FORMAT_INT64),
         ] {
             mpv_observe_property(mpv, 0, name, format)
@@ -254,6 +262,7 @@ final class Player {
     func play(_ items: [MediaItem], startAt index: Int = 0, fromBeginning: Bool = false, at time: Double? = nil, showVideo: Bool = false) {
         guard items.indices.contains(index) else { return }
         liveChannel = nil
+        radioStation = nil
         // Files on a drive that isn't connected: play a reachable copy, or leave them out.
         if let library, items.contains(where: { library.playableCopy(of: $0) != $0 }) {
             let reachable = items.indices.compactMap { offset in library.playableCopy(of: items[offset]).map { (offset, $0) } }
@@ -293,10 +302,36 @@ final class Player {
         speed = 1
         liveChannels = channels
         liveChannel = channel
+        radioStation = nil
         startTimes.replace(with: [:])
         audioOnly.replace(with: [])
         command("loadfile", channel.url.absoluteString)
         setFlag("pause", false)
+    }
+
+    /// Plays a radio station; Next and Previous then go through `stations`.
+    func playRadio(_ station: RadioStation, in stations: [RadioStation]) {
+        savePosition()
+        command("stop")
+        isVideoMinimized = false
+        queue = []
+        queueIndex = nil
+        speed = 1
+        liveChannel = nil
+        radioStations = stations
+        radioStation = station
+        streamTitle = nil
+        startTimes.replace(with: [:])
+        audioOnly.replace(with: [])
+        command("loadfile", station.url.absoluteString)
+        setFlag("pause", false)
+        radio?.played(station)
+        Task { await RadioDirectory().countPlay(of: station) }
+    }
+
+    private func tune(_ step: Int) {
+        guard let current = radioStation, let index = radioStations.firstIndex(of: current), !radioStations.isEmpty else { return }
+        playRadio(radioStations[(index + step + radioStations.count) % radioStations.count], in: radioStations)
     }
 
     private func zap(_ step: Int) {
@@ -500,6 +535,7 @@ final class Player {
 
     func next() {
         if liveChannel != nil { return zap(1) }
+        if radioStation != nil { return tune(1) }
         fileChanging()
         command("playlist-next")
     }
@@ -507,6 +543,7 @@ final class Player {
     /// Restarts the current track, or goes to the previous one near its start.
     func previous() {
         if liveChannel != nil { return zap(-1) }
+        if radioStation != nil { return tune(-1) }
         if position > 3 {
             seek(to: 0)
         } else {
@@ -557,6 +594,7 @@ final class Player {
         savePosition()
         command("stop")
         liveChannel = nil
+        radioStation = nil
         queue = []
         queueIndex = nil
         duration = 0
@@ -776,7 +814,7 @@ final class Player {
                     }
                 }
             case MPV_EVENT_START_FILE:
-                DispatchQueue.main.async { MainActor.assumeIsolated { self.isOpening = true } }
+                DispatchQueue.main.async { MainActor.assumeIsolated { self.isOpening = true; self.streamTitle = nil } }
             case MPV_EVENT_PLAYBACK_RESTART:  // after a seek or a new file starts
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
@@ -837,6 +875,9 @@ final class Player {
             }
             return
         case "duration": duration = value as? Double ?? 0
+        case "metadata/by-key/icy-title":
+            streamTitle = (value as? String).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+            nowPlaying?.update()
         case "demuxer-cache-time": bufferedUntil = value as? Double ?? 0
         case "paused-for-cache": isBuffering = value as? Bool ?? false
         case "cache-buffering-state": bufferingPercent = value as? Int ?? 0

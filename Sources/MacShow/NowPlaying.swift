@@ -59,6 +59,12 @@ final class NowPlaying {
             MPNowPlayingInfoPropertyMediaType: (player.isVideo ? MPNowPlayingInfoMediaType.video : .audio).rawValue,
         ]
         if let artist = item?.artist ?? item?.show { info[MPMediaItemPropertyArtist] = artist }
+        // Radio and live TV: the song (or channel) as the title, the station as the artist.
+        if let live = player.radioStation?.name ?? player.liveChannel?.name {
+            info[MPMediaItemPropertyTitle] = player.streamTitle ?? live
+            info[MPMediaItemPropertyArtist] = live
+            info[MPNowPlayingInfoPropertyIsLiveStream] = true
+        }
         if let album = item?.album { info[MPMediaItemPropertyAlbumTitle] = album }
         if let artwork = artwork(for: item?.artworkKey) { info[MPMediaItemPropertyArtwork] = artwork }
         // 15 s / 30 s skip buttons only make sense for audiobooks.

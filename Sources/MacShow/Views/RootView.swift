@@ -2,11 +2,11 @@ import MacShowCore
 import SwiftUI
 
 enum SidebarItem: Hashable, RawRepresentable {
-    case home, albums, artists, songs, movies, shows, liveTV, sports, documentaries, homeVideos, musicVideos, books, adult
+    case home, albums, artists, songs, radio, movies, shows, liveTV, sports, documentaries, homeVideos, musicVideos, books, adult
     case playlist(Int64)
     case smart(SmartList)
 
-    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .liveTV, .sports, .documentaries, .homeVideos, .musicVideos, .books, .adult]
+    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .radio, .movies, .shows, .liveTV, .sports, .documentaries, .homeVideos, .musicVideos, .books, .adult]
 
     init?(rawValue: String) {
         if rawValue.hasPrefix("playlist:"), let id = Int64(rawValue.dropFirst("playlist:".count)) {
@@ -26,6 +26,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .albums: "albums"
         case .artists: "artists"
         case .songs: "songs"
+        case .radio: "radio"
         case .movies: "movies"
         case .shows: "shows"
         case .liveTV: "liveTV"
@@ -46,6 +47,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .albums: "Albums"
         case .artists: "Artists"
         case .songs: "Songs"
+        case .radio: "Radio"
         case .movies: "Movies"
         case .shows: "TV Shows"
         case .liveTV: "Live TV"
@@ -66,6 +68,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .albums: "square.stack"
         case .artists: "music.mic"
         case .songs: "music.note"
+        case .radio: "radio"
         case .movies: "film"
         case .shows: "tv"
         case .liveTV: "antenna.radiowaves.left.and.right"
@@ -158,6 +161,7 @@ struct RootView: View {
                 row(.albums)
                 row(.artists)
                 row(.songs)
+                row(.radio)
             }
             Section("Video") {
                 row(.movies)
@@ -221,6 +225,7 @@ struct RootView: View {
             case .albums: AlbumsView()
             case .artists: ArtistsView()
             case .songs: SongsView()
+            case .radio: RadioView()
             case .movies: VideoGridView(title: "Movies", emptyTitle: "No Movies", icon: "film", section: "movies", videos: library.index.movies)
             case .shows: ShowsView()
             case .liveTV: LiveTVView()

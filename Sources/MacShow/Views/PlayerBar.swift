@@ -31,13 +31,22 @@ struct PlayerBar: View {
         HStack(spacing: 16) {
             HStack(spacing: 12) {
                 Button { openWindow(id: "mini") } label: {
-                    ArtworkView(key: player.currentItem?.artworkKey, title: player.currentItem?.album ?? player.title, cornerRadius: 6)
-                        .frame(width: 46, height: 46)
+                    Group {
+                        if let station = player.radioStation {
+                            AsyncImage(url: station.logo) { image in image.resizable().scaledToFit().background(.white.opacity(0.08)) } placeholder: {
+                                ArtworkView(key: nil, title: station.name, cornerRadius: 6)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        } else {
+                            ArtworkView(key: player.currentItem?.artworkKey, title: player.currentItem?.album ?? player.title, cornerRadius: 6)
+                        }
+                    }
+                    .frame(width: 46, height: 46)
                 }
                 .buttonStyle(.plain)
                 .help("Open Mini Player")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(player.currentItem?.title ?? player.title).font(.callout.weight(.semibold)).lineLimit(1)
+                    Text(player.radioStation?.name ?? player.currentItem?.title ?? player.title).font(.callout.weight(.semibold)).lineLimit(1)
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
@@ -45,14 +54,22 @@ struct PlayerBar: View {
 
             TransportControls()
 
-            HStack(spacing: 10) {
-                Text(Format.time(player.position)).monospacedDigit()
-                Slider(value: Binding(get: { player.position }, set: { player.seek(to: $0) }), in: 0...max(player.duration, 1))
-                    .controlSize(.small)
-                Text(Format.time(player.duration)).monospacedDigit()
+            if player.radioStation != nil {
+                Label("LIVE", systemImage: "dot.radiowaves.left.and.right")
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(.red.opacity(0.85), in: Capsule())
+                    .frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 10) {
+                    Text(Format.time(player.position)).monospacedDigit()
+                    Slider(value: Binding(get: { player.position }, set: { player.seek(to: $0) }), in: 0...max(player.duration, 1))
+                        .controlSize(.small)
+                    Text(Format.time(player.duration)).monospacedDigit()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
 
             if let badge = AlbumTile.badge(player.formatInfo) {
                 FormatBadge(text: badge)
@@ -90,6 +107,7 @@ struct PlayerBar: View {
     }
 
     private var subtitle: String {
+        if let station = player.radioStation { return player.streamTitle ?? station.details }
         guard let item = player.currentItem else { return player.formatInfo }
         if let chapter = player.chapterTitle, item.kind == .audiobook { return chapter }
         return [item.artist, item.album].compactMap { $0 }.joined(separator: " — ")

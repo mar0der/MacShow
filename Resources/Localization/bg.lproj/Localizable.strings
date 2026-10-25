@@ -421,3 +421,16 @@
 "That playlist has no channels." = "Този плейлист няма канали.";
 "Your Playlists" = "Вашите плейлисти";
 "https://…/playlist.m3u" = "https://…/playlist.m3u";
+"Countries" = "Държави";
+"Genres" = "Жанрове";
+"No Stations" = "Няма станции";
+"No stations found. The radio directory may be unreachable." = "Няма намерени станции. Радиоуказателят може да е недостъпен.";
+"Open Website" = "Отваряне на сайта";
+"Popular" = "Популярни";
+"Radio" = "Радио";
+"Recent" = "Скорошни";
+"Right-click a station to add it to your favorites." = "Щракнете с десния бутон върху станция, за да я добавите в любими.";
+"Search Stations" = "Търсене на станции";
+"Search stations" = "Търсене на станции";
+"Show" = "Показване";
+"Stations you play show up here." = "Тук се появяват станциите, които слушате.";

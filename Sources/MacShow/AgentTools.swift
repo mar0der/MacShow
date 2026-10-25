@@ -5,12 +5,12 @@ import MacShowCore
 @MainActor
 enum AgentTools {
     static let instructions = """
-    MacShow is the user's media player for their own music, movies, TV shows, music videos and audiobooks, and live TV. \
+    MacShow is the user's media player for their own music, movies, TV shows, music videos and audiobooks, live TV and radio from around the world. \
     Use search to find things (each result has an id), then play, queue or organize them by id. \
     now_playing tells what's on. Library changes (playlists, categories, details) may be switched off by the user (read-only).
     """
 
-    static func make(library: Library, player: Player, liveTV: LiveTV) -> [MCPTool] {
+    static func make(library: Library, player: Player, liveTV: LiveTV, radio: Radio) -> [MCPTool] {
         func items(_ arguments: JSONValue) throws -> [MediaItem] {
             let ids = (arguments["ids"]?.array ?? []).compactMap(\.int).map(Int64.init)
             let found = ids.compactMap { library.index.itemsByID[$0] }
@@ -75,6 +75,10 @@ enum AgentTools {
                 ]
             },
             MCPTool("now_playing", "What's playing: the item, position, paused or not, volume, and the queue.") { _ in
+                if let station = player.radioStation {
+                    return ["radio_station": .string(station.name), "now": player.streamTitle.map { .string($0) } ?? .null,
+                            "paused": .bool(player.isPaused), "volume": .number(player.volume.rounded())]
+                }
                 if let channel = player.liveChannel {
                     let (now, _) = liveTV.nowAndNext(for: channel)
                     return ["live_channel": .string(channel.name), "now": now.map { .string($0.title) } ?? .null,
@@ -123,6 +127,32 @@ enum AgentTools {
                 let added = try items(arguments)
                 if arguments["next"]?.bool == true { player.playNext(added) } else { player.addToQueue(added) }
                 return ["queue_length": .number(Double(player.queue.count))]
+            },
+            MCPTool("radio_stations", "Internet radio stations from around the world (Radio Browser): by name words, or by country code (\"BG\") or genre (\"jazz\"); with none, the most played. Also the user's favorites.",
+                    input: ["type": "object", "properties": ["query": ["type": "string"], "country": ["type": "string"], "genre": ["type": "string"]]]) { arguments in
+                let directory = RadioDirectory()
+                let stations: [RadioStation]
+                if let words = arguments["query"]?.string, !words.isEmpty { stations = await directory.search(words, limit: 50) }
+                else if let code = arguments["country"]?.string, !code.isEmpty { stations = await directory.stations(country: code.uppercased(), limit: 50) }
+                else if let genre = arguments["genre"]?.string, !genre.isEmpty { stations = await directory.stations(genre: genre.lowercased(), limit: 50) }
+                else { stations = await directory.popular(limit: 50) }
+                func describe(_ station: RadioStation) -> JSONValue {
+                    ["id": .string(station.id), "name": .string(station.name), "country": station.countryCode.map { .string($0) } ?? .null,
+                     "details": .string(station.details)]
+                }
+                return ["stations": .array(stations.map(describe)), "favorites": .array(radio.favorites.map(describe))]
+            },
+            MCPTool("play_radio", "Play a radio station by its id from radio_stations.",
+                    input: ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]) { arguments in
+                let id = arguments["id"]?.string ?? ""
+                var station = (radio.favorites + radio.recents).first { $0.id == id }
+                if station == nil {
+                    // A station from a search: look it up by id.
+                    station = await RadioDirectory().station(id: id)
+                }
+                guard let station else { throw MCPToolError("No station with that id. radio_stations lists them.") }
+                player.playRadio(station, in: [station])
+                return ["playing": .string(station.name)]
             },
             MCPTool("live_channels", "Live TV channels (the free ones and the user's playlists), with what's on now and next. Optional words narrow them down by name or group.",
                     input: ["type": "object", "properties": ["query": ["type": "string"]]]) { arguments in
