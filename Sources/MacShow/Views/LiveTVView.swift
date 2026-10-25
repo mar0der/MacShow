@@ -183,7 +183,7 @@ struct LiveTVSettings: View {
         Form {
             Section {
                 Toggle("Free channels", isOn: $live.showsFreeChannels)
-                Text("Bulgarian regional channels and international news, streamed for free by the broadcasters themselves.")
+                Text("Bulgarian regional channels, news, music, sports and more, streamed for free by the broadcasters themselves.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Your Playlists") {
