@@ -134,6 +134,16 @@ struct PlaybackSettings: View {
                 Toggle("Show controls in the menu bar", isOn: $showInMenuBar)
             }
             Section {
+                Picker("Volume leveling (ReplayGain)", selection: $player.replayGain) {
+                    Text("Album").tag("album")
+                    Text("Track").tag("track")
+                    Text("Off").tag("no")
+                }
+            } footer: {
+                Text("Uses the ReplayGain tags in your files. Album keeps the quiet and loud songs of an album as the artist meant; Track makes every song as loud as the next.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Section {
                 Toggle("Bit-perfect output", isOn: $player.exclusiveAudio)
                 if let file = player.fileSampleRate {
                     LabeledContent("Now playing") {

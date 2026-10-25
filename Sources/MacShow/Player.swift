@@ -31,6 +31,14 @@ final class Player {
         }
     }
     var isMuted = false { didSet { setFlag("mute", isMuted) } }
+    /// Volume leveling from ReplayGain tags: "album" (keeps an album's own
+    /// loud and quiet songs), "track" (every song as loud) or "no".
+    var replayGain = UserDefaults.standard.string(forKey: "replayGain") ?? "album" {
+        didSet {
+            UserDefaults.standard.set(replayGain, forKey: "replayGain")
+            setString("replaygain", replayGain)
+        }
+    }
     /// Zooms the picture to fill the window, cropping black bars (or the picture's edges).
     var fillsWindow = false { didSet { setDouble("panscan", fillsWindow ? 1 : 0) } }
     /// Bit-perfect output: mpv takes the audio device for itself and switches
@@ -122,6 +130,8 @@ final class Player {
         case off
         case at(Date)
         case endOfChapter
+        /// Pause when the song or video playing now ends.
+        case endOfItem
     }
 
     /// Index of the chapter playing in the current file (nil if it has none).
@@ -175,7 +185,7 @@ final class Player {
             ("audio-display", "no"),            // the UI shows cover art itself
             // Subtitle files named like the video (also "movie.en.srt"), beside it or in a Subs folder.
             ("sub-auto", "fuzzy"), ("sub-file-paths", "Subs:subs:Subtitles:subtitles"),
-            ("gapless-audio", "yes"), ("replaygain", "album"), ("replaygain-fallback", "0"),
+            ("gapless-audio", "yes"), ("replaygain-fallback", "0"),
             ("input-default-bindings", "no"), ("osc", "no"), ("idle", "yes"),
             // No Lua at all: no user scripts, no config, none of mpv's built-in scripts.
             ("load-scripts", "no"), ("config", "no"), ("load-stats-overlay", "no"), ("load-console", "no"),
@@ -185,6 +195,7 @@ final class Player {
             mpv_set_option_string(mpv, name, value)
         }
         mpv_set_option_string(mpv, "audio-exclusive", exclusiveAudio ? "yes" : "no")
+        mpv_set_option_string(mpv, "replaygain", replayGain)
         mpv_request_log_messages(mpv, "error")
 
         let status = mpv_initialize(mpv)
@@ -331,6 +342,8 @@ final class Player {
             }
         case .endOfChapter:
             sleepChapterEnd = chapterEnd(at: position)
+        case .endOfItem:
+            break
         }
     }
 
@@ -671,6 +684,10 @@ final class Player {
                         self.position = 0
                         self.lastSavedSecond = -1
                         self.countedPath = nil
+                        if self.sleepTimer == .endOfItem {
+                            self.setFlag("pause", true)
+                            self.sleepTimer = .off
+                        }
                         self.applyEqualizer()
                         // On the TV, the next video goes there too.
                         if let cast = self.activeCast, let path {
@@ -754,6 +771,10 @@ final class Player {
                 sleepChapterEnd = chapterEnd(at: position)
             }
             if sleepTimer == .endOfChapter, !sleepRetargetOnLoad, let end = sleepChapterEnd, end < duration - 1, position >= end - 0.3 {
+                if !isPaused { togglePause() }
+                sleepTimer = .off
+            }
+            if sleepTimer == .endOfItem, duration > 1, position >= duration - 0.6 {
                 if !isPaused { togglePause() }
                 sleepTimer = .off
             }

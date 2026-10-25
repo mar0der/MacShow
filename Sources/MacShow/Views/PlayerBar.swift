@@ -71,6 +71,13 @@ struct PlayerBar: View {
                     .imageScale(.large)
                     .help(showsLyrics ? "Hide Lyrics" : "Lyrics")
             }
+            if player.currentItem?.kind != .audiobook {
+                SleepTimerMenu()
+                    .labelStyle(.iconOnly)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+            }
             Button { showsQueue.toggle() } label: { Image(systemName: "list.bullet") }
                 .buttonStyle(.borderless)
                 .imageScale(.large)
@@ -159,5 +166,33 @@ struct TransportControls: View {
         }
         .buttonStyle(.borderless)
         .imageScale(.large)
+    }
+}
+
+/// Sleep timer for songs and videos: after a while, or at the end of what's playing.
+struct SleepTimerMenu: View {
+    @Environment(Player.self) private var player
+    private static let minutes = [15, 30, 45, 60, 90]
+
+    var body: some View {
+        Menu {
+            Toggle("Off", isOn: Binding(get: { player.sleepTimer == .off }, set: { _ in player.sleepTimer = .off }))
+            ForEach(Self.minutes, id: \.self) { minutes in
+                Button("\(minutes) Minutes") { player.sleepTimer = .at(Date(timeIntervalSinceNow: Double(minutes) * 60)) }
+            }
+            Toggle(player.isVideo ? LocalizedStringKey("End of Video") : LocalizedStringKey("End of Song"),
+                   isOn: Binding(get: { player.sleepTimer == .endOfItem }, set: { _ in player.sleepTimer = .endOfItem }))
+        } label: {
+            Label("Sleep Timer", systemImage: player.sleepTimer == .off ? "moon" : "moon.fill")
+        }
+        .help(sleepHelp)
+    }
+
+    private var sleepHelp: LocalizedStringKey {
+        switch player.sleepTimer {
+        case .at(let date): "Pauses in \(max(Int(date.timeIntervalSinceNow / 60), 1)) min"
+        case .endOfItem, .endOfChapter: "Pauses at the end"
+        case .off: "Sleep Timer"
+        }
     }
 }
