@@ -166,6 +166,8 @@ final class Player {
             ("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"),
             ("hwdec", "videotoolbox"), ("keep-open", "yes"), ("ytdl", "no"),
             ("audio-display", "no"),            // the UI shows cover art itself
+            // Subtitle files named like the video (also "movie.en.srt"), beside it or in a Subs folder.
+            ("sub-auto", "fuzzy"), ("sub-file-paths", "Subs:subs:Subtitles:subtitles"),
             ("gapless-audio", "yes"), ("replaygain", "album"), ("replaygain-fallback", "0"),
             ("input-default-bindings", "no"), ("osc", "no"), ("idle", "yes"),
             // No Lua at all: no user scripts, no config, none of mpv's built-in scripts.
@@ -376,6 +378,13 @@ final class Player {
     }
 
     func addSubtitleFile(_ url: URL) { command("sub-add", url.path, "select") }
+
+    /// Subtitle files mpv has loaded for the playing file.
+    func loadedSubtitleFiles() -> Set<String> {
+        _ = tracksVersion
+        let count = Int(string("track-list/count") ?? "") ?? 0
+        return Set((0..<count).compactMap { string("track-list/\($0)/external-filename") })
+    }
 
     /// Plays a file that isn't in the library (File › Open, or a launch argument).
     func open(_ url: URL) {

@@ -79,3 +79,19 @@ struct VideoTests {
         #expect(library.continueWatching.map(\.path) == [film.path])
     }
 }
+
+struct SubtitleFinderTests {
+    @Test func findsSubtitlesBesideAndInSubsFolders() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Subs-\(UUID())")
+        let subs = folder.appendingPathComponent("Subs/My.Show.S02E05")
+        try FileManager.default.createDirectory(at: subs, withIntermediateDirectories: true)
+        for file in ["My.Show.S02E05.mkv", "My.Show.S02E05.en.srt", "My.Show.S02E05.srt", "Other.Movie.srt", "notes.txt", "readme.nfo"] {
+            try Data().write(to: folder.appendingPathComponent(file))
+        }
+        try Data().write(to: subs.appendingPathComponent("2_English.srt"))
+
+        let found = SubtitleFinder.candidates(for: folder.appendingPathComponent("My.Show.S02E05.mkv")).map(\.lastPathComponent)
+        #expect(Array(found.prefix(2)) == ["My.Show.S02E05.srt", "My.Show.S02E05.en.srt"])
+        #expect(Set(found) == ["My.Show.S02E05.srt", "My.Show.S02E05.en.srt", "Other.Movie.srt", "2_English.srt"])
+    }
+}

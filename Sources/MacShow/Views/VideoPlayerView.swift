@@ -28,6 +28,19 @@ struct TrackChoices: View {
             ForEach(subtitles) { track in
                 Toggle(track.title, isOn: Binding(get: { track.isSelected }, set: { _ in player.select(track, type: "sub") }))
             }
+            if let video = player.currentItem?.url {
+                let loaded = player.loadedSubtitleFiles()
+                let found = SubtitleFinder.candidates(for: video).filter { !loaded.contains($0.path) }
+                if !found.isEmpty {
+                    Menu("Found Next to the Video") {
+                        ForEach(found.prefix(12), id: \.self) { file in
+                            Button(file.path.replacingOccurrences(of: video.deletingLastPathComponent().path + "/", with: "")) {
+                                player.addSubtitleFile(file)
+                            }
+                        }
+                    }
+                }
+            }
             Button("Add Subtitle File…") {
                 let panel = NSOpenPanel()
                 panel.allowedContentTypes = []
