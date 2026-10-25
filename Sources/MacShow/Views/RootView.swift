@@ -73,12 +73,19 @@ struct RootView: View {
     @State private var path = NavigationPath()
 
     var body: some View {
-        // Videos play in this window, TV-app style, and Back (or Esc) returns here.
-        if player.isVideo {
-            VideoPlayerView()
-        } else {
-            browser
+        // Videos play in this window, TV-app style. Back (or Esc) returns here,
+        // with the video carrying on in a corner.
+        Group {
+            if player.isVideo, !player.isVideoMinimized {
+                VideoPlayerView()
+            } else {
+                browser.overlay(alignment: .bottomTrailing) {
+                    if player.isVideo { FloatingVideo().padding(24) }
+                }
+            }
         }
+        // Closing the window stops a video (music keeps playing).
+        .onDisappear { if player.isVideo { player.stop() } }
     }
 
     private var browser: some View {

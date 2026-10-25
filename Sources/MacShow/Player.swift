@@ -89,6 +89,9 @@ final class Player {
     var currentItem: MediaItem? { queueIndex.flatMap { queue.indices.contains($0) ? queue[$0] : nil } }
     /// The loaded file has a real video track (not just cover art).
     private(set) var isVideo = false
+    /// The video keeps playing in a corner while you browse the library.
+    /// Starting something new brings it back full size.
+    var isVideoMinimized = false
     var hasMedia: Bool { duration > 0 || currentItem != nil }
 
     @ObservationIgnored nonisolated(unsafe) private let mpv: OpaquePointer
@@ -156,6 +159,7 @@ final class Player {
         }
         savePosition()
         command("stop")
+        isVideoMinimized = false
         queue = items
         queueIndex = index
         isShuffled = false
@@ -312,6 +316,7 @@ final class Player {
     func open(_ url: URL) {
         savePosition()
         command("stop")
+        isVideoMinimized = false
         queue = []
         queueIndex = nil
         command("loadfile", url.path)
@@ -329,6 +334,10 @@ final class Player {
     }
 
     func togglePause() { command("cycle", "pause") }
+    /// One frame forward or back (pauses).
+    func stepFrame(forward: Bool) { command(forward ? "frame-step" : "frame-back-step") }
+    /// The next subtitle track, then off.
+    func cycleSubtitles() { command("cycle", "sub") }
     func seek(to seconds: Double) {
         retargetSleep(at: seconds)
         command("seek", String(seconds), "absolute")

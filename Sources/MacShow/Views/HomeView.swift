@@ -87,6 +87,12 @@ struct JumpBackInCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Play") { play() }
+            Button("Remove from Continue Watching") { library.removeFromContinueWatching(item) }
+            Divider()
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
+        }
     }
 
     private var kind: String {

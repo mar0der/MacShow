@@ -46,6 +46,8 @@ struct VideoPlayerView: View {
     @State private var controlsVisible = true
     @State private var hideTask: Task<Void, Never>?
     @State private var isFullScreen = false
+    /// The episode whose Up Next card was closed.
+    @State private var dismissedUpNext: String?
 
     var body: some View {
         @Bindable var player = player
@@ -63,11 +65,11 @@ struct VideoPlayerView: View {
 
             VStack {
                 HStack(spacing: 12) {
-                    Button { player.stop() } label: {
+                    Button { player.isVideoMinimized = true } label: {
                         Image(systemName: "chevron.left").font(.title3.weight(.semibold))
                     }
                     .buttonStyle(.borderless)
-                    .help("Back to Library (Esc)")
+                    .help("Back to Library, Keep Playing (Esc)")
                     VStack(alignment: .leading, spacing: 1) {
                         Text(player.currentItem?.title ?? player.title).font(.headline)
                         if let item = player.currentItem, item.kind == .episode, let show = item.show {
@@ -80,6 +82,10 @@ struct VideoPlayerView: View {
                             .padding(.horizontal, 7).padding(.vertical, 3)
                             .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
                     }
+                    Button { player.stop() } label: { Image(systemName: "xmark").font(.body.weight(.semibold)) }
+                        .buttonStyle(.borderless)
+                        .help("Stop and Close (⇧⌘W)")
+                        .padding(.leading, 6)
                 }
                 .padding(.horizontal, 20).padding(.vertical, 12)
                 .padding(.leading, isFullScreen ? 0 : 64)  // clear of the window buttons
@@ -105,7 +111,7 @@ struct VideoPlayerView: View {
                         .frame(width: 200, alignment: .leading)
                         Spacer()
                         HStack(spacing: 18) {
-                            Button { player.previous() } label: { Image(systemName: "backward.end.fill") }
+                            Button { player.previous() } label: { Label("Previous", systemImage: "backward.end.fill").labelStyle(.iconOnly) }
                                 .help("Previous (⌘←)")
                                 .disabled(player.queue.count < 2)
                             Button { player.skip(-10) } label: { Image(systemName: "gobackward.10") }.help("Back 10 seconds (←)")
@@ -114,7 +120,7 @@ struct VideoPlayerView: View {
                             }
                             .help(player.isPaused ? "Play (Space)" : "Pause (Space)")
                             Button { player.skip(10) } label: { Image(systemName: "goforward.10") }.help("Forward 10 seconds (→)")
-                            Button { player.next() } label: { Image(systemName: "forward.end.fill") }
+                            Button { player.next() } label: { Label("Next", systemImage: "forward.end.fill").labelStyle(.iconOnly) }
                                 .help("Next (⌘→)")
                                 .disabled((player.queueIndex ?? 0) + 1 >= player.queue.count)
                         }
@@ -138,6 +144,24 @@ struct VideoPlayerView: View {
             }
             .opacity(controlsVisible ? 1 : 0)
             .animation(.easeInOut(duration: 0.25), value: controlsVisible)
+
+            // Stay up while the controls are hidden: they're what you'd reach for then.
+            VStack(alignment: .trailing, spacing: 12) {
+                if isIntro {
+                    Button("Skip Intro") { player.nextChapter() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                }
+                if let next = upNext {
+                    UpNextCard(next: next, secondsLeft: player.duration - player.position) {
+                        dismissedUpNext = player.currentItem?.path
+                    }
+                }
+            }
+            .padding(.trailing, 32)
+            .padding(.bottom, controlsVisible ? 150 : 40)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            .animation(.easeInOut(duration: 0.25), value: controlsVisible)
         }
         .background(.black)
         .ignoresSafeArea()
@@ -152,10 +176,23 @@ struct VideoPlayerView: View {
         }
         .onDisappear {
             hideTask?.cancel()
-            VideoScreen.videoClosed()
-            // The window was closed while the video played.
-            if player.isVideo { player.stop() }
+            VideoScreen.leaveFullScreen()
         }
+    }
+
+    /// The next episode, in the last 30 seconds of this one (it plays on its own at the end).
+    private var upNext: MediaItem? {
+        guard let current = player.currentItem, current.kind == .episode, current.path != dismissedUpNext,
+              let index = player.queueIndex, index + 1 < player.queue.count,
+              player.duration > 120, player.duration - player.position <= 30
+        else { return nil }
+        return player.queue[index + 1]
+    }
+
+    /// Playing a chapter named like an intro (and it isn't the last chapter).
+    private var isIntro: Bool {
+        guard let title = player.chapterTitle?.lowercased(), let chapter = player.chapterIndex else { return false }
+        return (title.contains("intro") || title.contains("opening")) && chapter + 1 < player.chapters().count
     }
 
     /// Shows the controls and hides them (and the pointer) again after three idle seconds while playing.
@@ -181,5 +218,81 @@ private extension View {
         } else {
             self
         }
+    }
+}
+
+/// "Up Next" over the last seconds of an episode.
+private struct UpNextCard: View {
+    let next: MediaItem
+    let secondsLeft: Double
+    let dismiss: () -> Void
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VideoStill(item: next, cornerRadius: 6).frame(width: 160)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Up Next · in \(max(0, Int(secondsLeft.rounded())))s").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(next.title).font(.headline).lineLimit(1)
+                if let season = next.season, let episode = next.episode {
+                    Text("S\(season) E\(episode)").font(.caption).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button { player.next() } label: { Label("Play Now", systemImage: "play.fill") }
+                        .buttonStyle(.borderedProminent)
+                    Button("Hide", action: dismiss)
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(14)
+        .frame(width: 420, alignment: .leading)
+        .glassPanel(cornerRadius: 16)
+    }
+}
+
+/// The video in a corner of the library while you browse. Click to bring it back.
+struct FloatingVideo: View {
+    @Environment(Player.self) private var player
+    @State private var hovering = false
+
+    var body: some View {
+        ZStack {
+            VideoView(layer: player.layer) { window in
+                VideoScreen.window = window
+                player.reattachVideoOutput()
+            }
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { player.isVideoMinimized = false }
+            if hovering {
+                ZStack {
+                    Color.black.opacity(0.35).allowsHitTesting(false)
+                    Button { player.togglePause() } label: {
+                        Image(systemName: player.isPaused ? "play.fill" : "pause.fill").font(.title)
+                    }
+                    .help(player.isPaused ? "Play" : "Pause")
+                    VStack {
+                        HStack {
+                            Button { player.isVideoMinimized = false } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
+                                .help("Back to Full Size")
+                            Spacer()
+                            Button { player.stop() } label: { Image(systemName: "xmark") }
+                                .help("Stop and Close")
+                        }
+                        Spacer()
+                    }
+                    .padding(10)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 320, height: 180)
+        .background(.black)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.15)))
+        .shadow(color: .black.opacity(0.5), radius: 16, y: 6)
+        .onHover { hovering = $0 }
     }
 }

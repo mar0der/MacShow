@@ -13,7 +13,8 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
 - **Music.** Albums, artists, songs, playlists, gapless playback, ReplayGain,
   media keys, Now Playing, a mini player. Duplicate copies collapse to the best one.
 - **Video.** Movies, TV shows grouped into seasons, home videos, resume where you
-  stopped, subtitle and audio-track menus.
+  stopped, subtitle and audio-track menus. Keep watching in a corner while you
+  browse; Up Next at the end of an episode, Skip Intro on intro chapters.
 - **Audiobooks.** Chaptered M4B files or folders of MP3s, chapters, speed,
   sleep timer, bookmarks, resume to the second.
 - **Content kept apart.** Right-click a video to mark its folder as Personal
@@ -26,12 +27,14 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
 | Key | Does |
 | --- | --- |
 | Space | Play / pause (anywhere but a text field) |
-| ← → | Back / forward 10 seconds (video) |
+| ← → | Back / forward 10 seconds, ⇧ for 30 (video) |
 | ↑ ↓ | Volume (video); ⌘↑ ⌘↓ anywhere |
 | ⌘← ⌘→ | Previous / next |
 | F or double-click | Full screen (video) |
 | M | Mute (video) |
-| Esc | Leave full screen, then close the video |
+| S | Next subtitles (video) |
+| , . | Step a frame back / forward (video) |
+| Esc | Leave full screen, then shrink the video to a corner and keep browsing |
 | ⇧⌘A | Show / hide Adult content |
 
 See the [roadmap](ROADMAP.md) for the plan and what's left.

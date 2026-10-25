@@ -5,8 +5,9 @@ import AppKit
 /// they work whatever has focus, except while typing in a text field:
 ///
 /// - Space: play / pause (anywhere)
-/// - With a video on screen: ← → skip 10 seconds, ↑ ↓ volume, F full screen,
-///   M mute, Esc leaves full screen, then closes the video.
+/// - With a video on screen: ← → skip 10 seconds (⇧ for 30), ↑ ↓ volume,
+///   , . step a frame, F full screen, M mute, S next subtitles, Esc leaves
+///   full screen, then shrinks the video into a corner of the library.
 @MainActor
 enum VideoScreen {
     /// The window showing the video, set by the video player while it's on screen.
@@ -23,11 +24,10 @@ enum VideoScreen {
         window.toggleFullScreen(nil)
     }
 
-    /// The video closed: leave the full screen it was playing in.
-    static func videoClosed() {
+    /// The full-size video went away: leave the full screen it was playing in.
+    static func leaveFullScreen() {
         if enteredFullScreen, isFullScreen { window?.toggleFullScreen(nil) }
         enteredFullScreen = false
-        window = nil
     }
 
     static func installKeys(for player: Player) {
@@ -38,25 +38,31 @@ enum VideoScreen {
     }
 
     private static func handle(_ event: NSEvent, player: Player) -> Bool {
-        guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty else { return false }
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        guard modifiers.isEmpty || modifiers == .shift else { return false }
         if let text = event.window?.firstResponder as? NSTextView, text.isEditable { return false }
 
-        if event.keyCode == 49, player.hasMedia {  // Space
+        if event.keyCode == 49, modifiers.isEmpty, player.hasMedia {  // Space
             player.togglePause()
             return true
         }
-        guard player.isVideo, let window, event.window === window else { return false }
+        guard player.isVideo, !player.isVideoMinimized, let window, event.window === window else { return false }
+        let jump: Double = modifiers == .shift ? 30 : 10
         switch event.keyCode {
-        case 123: player.skip(-10)                              // ←
-        case 124: player.skip(10)                               // →
+        case 123: player.skip(-jump)                            // ←
+        case 124: player.skip(jump)                             // →
         case 126: player.volume = min(100, player.volume + 5)   // ↑
         case 125: player.volume = max(0, player.volume - 5)     // ↓
         case 53:                                                // Esc
-            if isFullScreen { toggleFullScreen() } else { player.stop() }
+            if isFullScreen { toggleFullScreen() } else { player.isVideoMinimized = true }
         default:
+            guard modifiers.isEmpty else { return false }
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "f": toggleFullScreen()
             case "m": player.isMuted.toggle()
+            case "s": player.cycleSubtitles()
+            case ",": player.stepFrame(forward: false)
+            case ".": player.stepFrame(forward: true)
             default: return false
             }
         }

@@ -355,8 +355,25 @@ public final class Library {
         writeQueue.async { try? database.clearPosition(for: id) }
     }
 
+    /// Items taken off Continue Watching, and when. One comes back once it's
+    /// played again (its resume point is newer than this).
+    public private(set) var removedFromContinueWatching: [Int64: Date] = {
+        let saved = UserDefaults.standard.dictionary(forKey: "removedFromContinueWatching") as? [String: Double] ?? [:]
+        return Dictionary(uniqueKeysWithValues: saved.compactMap { key, value in Int64(key).map { ($0, Date(timeIntervalSince1970: value)) } })
+    }()
+
+    public func removeFromContinueWatching(_ item: MediaItem) {
+        guard let id = item.id else { return }
+        removedFromContinueWatching[id] = Date()
+        UserDefaults.standard.set(
+            Dictionary(uniqueKeysWithValues: removedFromContinueWatching.map { (String($0.key), $0.value.timeIntervalSince1970) }),
+            forKey: "removedFromContinueWatching"
+        )
+    }
+
     /// Movies and episodes to pick up: ones stopped partway, plus the next
-    /// episode of a show whose latest episode was finished. Most recent first.
+    /// episode of a show whose latest episode was finished. Most recent first,
+    /// one per show.
     public var continueWatching: [MediaItem] {
         var result: [(item: MediaItem, date: Date)] = []
         for position in positions.values {
@@ -368,8 +385,12 @@ public final class Library {
                 result.append((next, position.updatedAt))
             }
         }
-        var seen = Set<Int64?>()
-        return result.sorted { $0.date > $1.date }.map(\.item).filter { seen.insert($0.id).inserted }
+        result.removeAll { entry in entry.item.id.flatMap { removedFromContinueWatching[$0] }.map { $0 >= entry.date } ?? false }
+        // One entry per show: the episode watched most recently.
+        var seen = Set<String>()
+        return result.sorted { $0.date > $1.date }.map(\.item).filter { item in
+            seen.insert(item.kind == .episode ? "show:" + (item.show ?? "").lowercased() : "item:\(item.id ?? -1)").inserted
+        }
     }
 
     /// Books started but not finished, most recently listened first.
