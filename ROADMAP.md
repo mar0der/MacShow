@@ -94,6 +94,26 @@ The direct download first (see [Distribution](#distribution)):
 Done when a fresh Mac can download, open and update MacShow with no warnings,
 and see `~/Music` without being asked for permission.
 
+### Next: Casting
+
+Send video to an Apple TV (AirPlay) and smart TVs (DLNA). Files are repackaged
+on the fly, not re-encoded; only what the TV can't decode is converted (AV1 or
+XviD video, DTS or TrueHD audio to Dolby Digital Plus 5.1). The player shows
+whether a file plays Direct or Converting.
+
+### Next: Network storage
+
+Media on a NAS or on shared folders on other Macs and PCs in the house.
+
+- Find shares on the network (Bonjour SMB) and connect from Settings, with the
+  password kept in the Keychain.
+- Reconnect saved shares at launch, and treat a share that's away like an
+  unplugged drive (items stay, shown as unavailable).
+- Rescan on a timer and when the share comes back: FSEvents don't report
+  changes made by other computers on SMB.
+- Keep scans light over the network: read only new and changed files and
+  their tags, and make video stills in the background.
+
 ### Later: Mac App Store
 
 A second build of the same sandboxed app, without Sparkle and with the store-safe
