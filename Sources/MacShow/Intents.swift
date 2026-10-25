@@ -112,6 +112,8 @@ struct PreviousIntent: AppIntent {
 /// Siri phrases (and the actions Shortcuts shows without setup).
 struct MacShowShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        AppShortcut(intent: PlayItemIntent(), phrases: ["Play \(\.$item) in \(.applicationName)", "Put on \(\.$item) in \(.applicationName)"],
+                    shortTitle: "Play Item", systemImageName: "play.circle")
         AppShortcut(intent: PlayIntent(), phrases: ["Play something in \(.applicationName)", "Play music in \(.applicationName)"],
                     shortTitle: "Play", systemImageName: "play.fill")
         AppShortcut(intent: PlayPauseIntent(), phrases: ["Pause \(.applicationName)", "Resume \(.applicationName)"],
@@ -120,5 +122,111 @@ struct MacShowShortcuts: AppShortcutsProvider {
                     shortTitle: "Next", systemImageName: "forward.fill")
         AppShortcut(intent: PreviousIntent(), phrases: ["Previous song in \(.applicationName)"],
                     shortTitle: "Previous", systemImageName: "backward.fill")
+    }
+}
+
+/// Something in the library Siri and Shortcuts can name: an album, artist,
+/// playlist, show or song ("Play Kamikaze in MacShow").
+struct LibraryItemEntity: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Library Item"
+    static let defaultQuery = LibraryItemQuery()
+
+    /// "album:<id>", "artist:<id>", "playlist:<id>", "show:<id>" or "song:<id>".
+    let id: String
+    let name: String
+    let kind: String
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(name)", subtitle: "\(kind)")
+    }
+}
+
+struct LibraryItemQuery: EntityStringQuery {
+    @MainActor
+    func entities(for identifiers: [String]) async throws -> [LibraryItemEntity] {
+        identifiers.compactMap(AppServices.entity(id:))
+    }
+
+    @MainActor
+    func entities(matching string: String) async throws -> [LibraryItemEntity] {
+        AppServices.entities(matching: string)
+    }
+
+    /// What Siri learns names from: playlists, albums and shows.
+    @MainActor
+    func suggestedEntities() async throws -> [LibraryItemEntity] {
+        AppServices.suggestedEntities()
+    }
+}
+
+struct PlayItemIntent: AppIntent {
+    static let title: LocalizedStringResource = "Play Item in MacShow"
+    static let description = IntentDescription("Plays an album, artist, playlist, show or song from your MacShow library.")
+
+    @Parameter(title: "Item")
+    var item: LibraryItemEntity
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        AppServices.play(entity: item)
+        return .result(dialog: "Playing \(item.name).")
+    }
+}
+
+extension AppServices {
+    static func entity(id: String) -> LibraryItemEntity? {
+        guard let library else { return nil }
+        let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+        let index = library.index
+        switch parts[0] {
+        case "album": return index.albums.first { $0.id == parts[1] }.map { LibraryItemEntity(id: id, name: $0.title, kind: $0.artist) }
+        case "artist": return index.artists.first { $0.id == parts[1] }.map { LibraryItemEntity(id: id, name: $0.name, kind: String(localized: "Artist")) }
+        case "show": return index.shows.first { $0.id == parts[1] }.map { LibraryItemEntity(id: id, name: $0.title, kind: String(localized: "TV Show")) }
+        case "playlist":
+            return library.playlists.first { $0.playlist.id.map(String.init) == parts[1] }
+                .map { LibraryItemEntity(id: id, name: $0.playlist.name, kind: String(localized: "Playlist")) }
+        case "song":
+            return Int64(parts[1]).flatMap { index.itemsByID[$0] }.map { LibraryItemEntity(id: id, name: $0.title, kind: $0.artist ?? String(localized: "Song")) }
+        default: return nil
+        }
+    }
+
+    static func entities(matching string: String) -> [LibraryItemEntity] {
+        guard let library else { return [] }
+        let query = string.lowercased()
+        let index = library.index
+        func has(_ name: String) -> Bool { name.lowercased().contains(query) }
+        let ids = library.playlists.filter { has($0.playlist.name) }.compactMap { $0.playlist.id.map { "playlist:\($0)" } }
+            + index.albums.filter { has($0.title) }.map { "album:" + $0.id }
+            + index.artists.filter { has($0.name) && !$0.isFeaturedOnly }.map { "artist:" + $0.id }
+            + index.shows.filter { has($0.title) }.map { "show:" + $0.id }
+            + index.songs.filter { has($0.title) }.prefix(20).compactMap { $0.id.map { "song:\($0)" } }
+        return ids.prefix(40).compactMap(entity(id:))
+    }
+
+    static func suggestedEntities() -> [LibraryItemEntity] {
+        guard let library else { return [] }
+        let ids = library.playlists.compactMap { $0.playlist.id.map { "playlist:\($0)" } }
+            + library.index.albums.prefix(200).map { "album:" + $0.id }
+            + library.index.shows.map { "show:" + $0.id }
+            + library.index.artists.filter { !$0.isFeaturedOnly }.prefix(100).map { "artist:" + $0.id }
+        return ids.compactMap(entity(id:))
+    }
+
+    static func play(entity: LibraryItemEntity) {
+        guard let library, let player else { return }
+        let index = library.index
+        let parts = entity.id.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return }
+        switch parts[0] {
+        case "album": if let album = index.albums.first(where: { $0.id == parts[1] }) { player.play(album.tracks) }
+        case "artist": if let artist = index.artists.first(where: { $0.id == parts[1] }) { player.play(artist.songs.shuffled()) }
+        case "playlist":
+            if let list = library.playlists.first(where: { $0.playlist.id.map(String.init) == parts[1] }), !list.items.isEmpty { player.play(list.items) }
+        case "show": _ = play(entity.name)
+        case "song": if let song = Int64(parts[1]).flatMap({ index.itemsByID[$0] }) { player.play([song]) }
+        default: break
+        }
     }
 }

@@ -96,6 +96,8 @@ struct RootView: View {
         }
         // Closing the window stops a video (music keeps playing).
         .onDisappear { if player.isVideo { player.stop() } }
+        // Siri learns the names of albums, playlists and shows from these.
+        .onChange(of: library.generation) { MacShowShortcuts.updateAppShortcutParameters() }
         .onChange(of: player.isVideoMinimized) { _, minimized in
             if minimized { showCurrentShow() }
         }
