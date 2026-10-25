@@ -8,6 +8,7 @@ struct MacShowApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var library: Library
     @State private var player: Player
+    @AppStorage("showInMenuBar") private var showInMenuBar = true
 
     init() {
         let library: Library
@@ -124,6 +125,15 @@ struct MacShowApp: App {
         }
         .windowResizability(.contentSize)
         .noRestoration()
+
+        MenuBarExtra(isInserted: $showInMenuBar) {
+            MenuBarPlayer()
+                .environment(library)
+                .environment(player)
+        } label: {
+            Image(systemName: player.hasMedia && !player.isPaused ? "play.circle.fill" : "play.circle")
+        }
+        .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView()

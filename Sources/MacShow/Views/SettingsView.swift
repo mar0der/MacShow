@@ -117,10 +117,14 @@ struct LibrarySettings: View {
 /// Bit-perfect output.
 struct PlaybackSettings: View {
     @Environment(Player.self) private var player
+    @AppStorage("showInMenuBar") private var showInMenuBar = true
 
     var body: some View {
         @Bindable var player = player
         Form {
+            Section {
+                Toggle("Show controls in the menu bar", isOn: $showInMenuBar)
+            }
             Section {
                 Toggle("Bit-perfect output", isOn: $player.exclusiveAudio)
                 if let file = player.fileSampleRate {
