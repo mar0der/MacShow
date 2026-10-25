@@ -22,6 +22,7 @@ struct LibrarySettings: View {
     @State private var addingNetworkFolder = false
     @AppStorage(Library.fetchArtworkKey) private var fetchArtwork = true
     @AppStorage(ArtworkFetcher.tmdbKeyDefault) private var tmdbKey = ""
+    @AppStorage(Library.fetchLyricsKey) private var fetchLyrics = true
 
     var body: some View {
         Form {
@@ -78,6 +79,13 @@ struct LibrarySettings: View {
                 Toggle("Download missing album artwork", isOn: $fetchArtwork)
             } footer: {
                 Text("Looks up covers for albums that have none on the iTunes Store. Only album and artist names are sent.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Section {
+                Toggle("Look up lyrics online", isOn: $fetchLyrics)
+            } footer: {
+                Text("For songs without an .lrc file or lyrics in their tags, from LRCLIB (lrclib.net). Only the artist, title, album and length are sent.")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 

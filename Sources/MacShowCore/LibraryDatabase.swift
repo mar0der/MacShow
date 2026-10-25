@@ -86,6 +86,7 @@ public final class LibraryDatabase: Sendable {
         registerFolderRuleMigration(&migrator)
         registerItemEditMigration(&migrator)
         registerDetailsMigration(&migrator)
+        registerLyricsMigration(&migrator)
         migrator.registerMigration("v11-artist-images") { db in
             try db.create(table: "artistImage") { t in
                 t.primaryKey("artistId", .text)

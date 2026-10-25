@@ -69,3 +69,39 @@ struct BookAuthorTests {
         #expect(groups[2].books.map(\.title) == ["Blank", "Untitled"])
     }
 }
+
+struct LyricsTests {
+    @Test func parsesLRC() {
+        let lyrics = Lyrics(lines: Lyrics.parse("[ar: Someone]\n[ti: Song]\n[00:01.50] first\n[00:04.00][00:20.00] chorus\n[00:10.25] second\n"), source: "file")
+        #expect(lyrics.lines.map(\.text) == ["first", "chorus", "second", "chorus"])
+        #expect(lyrics.lines.map(\.time) == [1.5, 4, 10.25, 20])
+        #expect(lyrics.lineIndex(at: 0.5) == nil)
+        #expect(lyrics.lineIndex(at: 5) == 1)
+        #expect(lyrics.lineIndex(at: 30) == 3)
+    }
+
+    @Test func plainTextIsUnsynced() {
+        let lyrics = Lyrics(lines: Lyrics.parse("one\ntwo\n\n"), source: "tags")
+        #expect(!lyrics.isSynced && lyrics.lines.map(\.text) == ["one", "two"])
+        #expect(lyrics.lineIndex(at: 10) == nil)
+    }
+
+    @Test func readsLRCLIBAndSidecarFiles() throws {
+        let synced = LyricsFinder.fromLRCLIB(Data(#"{"syncedLyrics":"[00:01.00] a\n[00:02.00] b","plainLyrics":"a\nb"}"#.utf8))
+        #expect(synced?.isSynced == true && synced?.source == "LRCLIB")
+        #expect(LyricsFinder.fromLRCLIB(Data(#"{"instrumental":true}"#.utf8))?.isInstrumental == true)
+
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Lyrics-\(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("[00:03.00] hello".utf8).write(to: folder.appendingPathComponent("01 Song.lrc"))
+        let song = makeItem(folder.appendingPathComponent("01 Song.flac").path)
+        #expect(LyricsFinder.local(for: song)?.lines.first?.text == "hello")
+    }
+
+    @Test func remembersSongsWithoutLyrics() throws {
+        let database = try LibraryDatabase.inMemory()
+        #expect(try database.cachedLyrics("/a.mp3") == nil)
+        try database.cacheLyrics(nil, path: "/a.mp3")
+        #expect(try database.cachedLyrics("/a.mp3") == .some(nil))
+    }
+}

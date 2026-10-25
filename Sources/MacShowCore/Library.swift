@@ -428,6 +428,26 @@ public final class Library {
         writeQueue.async { try? database.clearPosition(for: id) }
     }
 
+    // MARK: Lyrics
+
+    /// Settings key: look lyrics up on LRCLIB when a song has none (default on).
+    nonisolated public static let fetchLyricsKey = "fetchLyrics"
+
+    /// A song's lyrics: from an .lrc beside it, its tags, or LRCLIB. Each song is
+    /// looked up once; a song with none isn't asked about again.
+    public func lyrics(for item: MediaItem) async -> Lyrics? {
+        let database = database
+        if case .some(let cached) = try? database.cachedLyrics(item.path) { return cached }
+        if let local = await Task.detached(priority: .userInitiated, operation: { LyricsFinder.local(for: item) }).value {
+            return local
+        }
+        guard UserDefaults.standard.object(forKey: Self.fetchLyricsKey) as? Bool ?? true else { return nil }
+        // Not cached when the lookup failed (offline): worth trying again.
+        guard case .some(let found) = await LyricsFinder.online(for: item) else { return nil }
+        try? database.cacheLyrics(found, path: item.path)
+        return found
+    }
+
     // MARK: Movie and show details
 
     /// TMDB details for a movie or a show's episode (nil without a TMDB key, offline,

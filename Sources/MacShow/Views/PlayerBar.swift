@@ -24,6 +24,7 @@ struct PlayerBar: View {
     @Environment(Player.self) private var player
     @Environment(\.openWindow) private var openWindow
     @State private var showsQueue = false
+    @AppStorage("showsLyrics") private var showsLyrics = false
 
     var body: some View {
         @Bindable var player = player
@@ -62,6 +63,14 @@ struct PlayerBar: View {
                 Slider(value: $player.volume, in: 0...100).controlSize(.small).frame(width: 90)
             }
 
+            if player.currentItem?.isMusic == true {
+                Button { showsLyrics.toggle() } label: {
+                    Label("Lyrics", systemImage: showsLyrics ? "quote.bubble.fill" : "quote.bubble").labelStyle(.iconOnly)
+                }
+                    .buttonStyle(.borderless)
+                    .imageScale(.large)
+                    .help(showsLyrics ? "Hide Lyrics" : "Lyrics")
+            }
             Button { showsQueue.toggle() } label: { Image(systemName: "list.bullet") }
                 .buttonStyle(.borderless)
                 .imageScale(.large)

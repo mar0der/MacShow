@@ -73,6 +73,7 @@ struct RootView: View {
     // Remembered across launches; `-sidebarSelection albums` on the command line overrides it.
     @AppStorage("sidebarSelection") private var selection: SidebarItem = .home
     @State private var search = ""
+    @AppStorage("showsLyrics") private var showsLyrics = false
     @State private var path = NavigationPath()
 
     var body: some View {
@@ -127,6 +128,9 @@ struct RootView: View {
             #endif
         }
         .searchable(text: $search, placement: .sidebar, prompt: "Search everything")
+        .inspector(isPresented: Binding(get: { showsLyrics && player.currentItem?.isMusic == true }, set: { showsLyrics = $0 })) {
+            LyricsView().inspectorColumnWidth(min: 260, ideal: 320, max: 480)
+        }
     }
 
     private var sidebar: some View {
