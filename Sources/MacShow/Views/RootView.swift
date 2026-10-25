@@ -2,11 +2,11 @@ import MacShowCore
 import SwiftUI
 
 enum SidebarItem: Hashable, RawRepresentable {
-    case home, albums, artists, songs, movies, shows, homeVideos, musicVideos, books, adult
+    case home, albums, artists, songs, movies, shows, sports, documentaries, homeVideos, musicVideos, books, adult
     case playlist(Int64)
     case smart(SmartList)
 
-    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .homeVideos, .musicVideos, .books, .adult]
+    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .sports, .documentaries, .homeVideos, .musicVideos, .books, .adult]
 
     init?(rawValue: String) {
         if rawValue.hasPrefix("playlist:"), let id = Int64(rawValue.dropFirst("playlist:".count)) {
@@ -28,6 +28,8 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .songs: "songs"
         case .movies: "movies"
         case .shows: "shows"
+        case .sports: "sports"
+        case .documentaries: "documentaries"
         case .homeVideos: "homeVideos"
         case .musicVideos: "musicVideos"
         case .books: "books"
@@ -45,6 +47,8 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .songs: "Songs"
         case .movies: "Movies"
         case .shows: "TV Shows"
+        case .sports: "Sports"
+        case .documentaries: "Documentaries"
         case .homeVideos: "Home Videos"
         case .musicVideos: "Music Videos"
         case .books: "All Books"
@@ -62,6 +66,8 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .songs: "music.note"
         case .movies: "film"
         case .shows: "tv"
+        case .sports: "sportscourt"
+        case .documentaries: "globe.europe.africa"
         case .homeVideos: "video"
         case .musicVideos: "music.note.tv"
         case .books: "book"
@@ -153,6 +159,8 @@ struct RootView: View {
             Section("Video") {
                 row(.movies)
                 row(.shows)
+                row(.sports)
+                row(.documentaries)
                 row(.homeVideos)
                 row(.musicVideos)
                 if library.showingAdult {
@@ -215,14 +223,18 @@ struct RootView: View {
             case .albums: AlbumsView()
             case .artists: ArtistsView()
             case .songs: SongsView()
-            case .movies: VideoGridView(title: "Movies", emptyTitle: "No Movies", icon: "film", videos: library.index.movies)
+            case .movies: VideoGridView(title: "Movies", emptyTitle: "No Movies", icon: "film", section: "movies", videos: library.index.movies)
             case .shows: ShowsView()
-            case .homeVideos: VideoGridView(title: "Home Videos", emptyTitle: "No Home Videos", icon: "video", videos: library.index.homeVideos)
-            case .musicVideos: VideoGridView(title: "Music Videos", emptyTitle: "No Music Videos", icon: "music.note.tv", videos: library.index.musicVideos)
+            case .sports: SportsView()
+            case .documentaries:
+                VideoGridView(title: "Documentaries", emptyTitle: "No Documentaries", icon: "globe.europe.africa", section: "documentaries",
+                              videos: library.index.documentaries)
+            case .homeVideos: VideoGridView(title: "Home Videos", emptyTitle: "No Home Videos", icon: "video", section: "homeVideos", videos: library.index.homeVideos)
+            case .musicVideos: VideoGridView(title: "Music Videos", emptyTitle: "No Music Videos", icon: "music.note.tv", section: "musicVideos", videos: library.index.musicVideos)
             case .books: BooksView()
             case .adult:
                 if library.showingAdult {
-                    VideoGridView(title: "Adult", emptyTitle: "Nothing Here", icon: "eye.slash", videos: library.index.adult)
+                    AdultView()
                 } else {
                     HomeView()
                 }

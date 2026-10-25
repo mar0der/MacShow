@@ -48,6 +48,8 @@ enum AgentTools {
                          "episode_ids": .array(show.episodes.compactMap(\.id).map { .number(Double($0)) })]
                     }),
                     "music_videos": found(index.musicVideos),
+                    "sports": found(index.sports),
+                    "documentaries": found(index.documentaries),
                     "home_videos": found(index.homeVideos),
                     "audiobooks": .array(index.books.filter { matches("\($0.title) \($0.author ?? "")") }.prefix(limit).map { book in
                         ["title": .string(book.title), "author": book.author.map { .string($0) } ?? .null,
@@ -62,6 +64,7 @@ enum AgentTools {
                     "artists": .number(Double(index.artists.filter { !$0.isFeaturedOnly }.count)),
                     "movies": .number(Double(index.movies.count)), "shows": .number(Double(index.shows.count)),
                     "music_videos": .number(Double(index.musicVideos.count)), "home_videos": .number(Double(index.homeVideos.count)),
+                    "sports": .number(Double(index.sports.count)), "documentaries": .number(Double(index.documentaries.count)),
                     "audiobooks": .number(Double(index.books.count)),
                     "playlists": .array(library.playlists.map { ["id": .number(Double($0.playlist.id ?? 0)), "name": .string($0.playlist.name), "items": .number(Double($0.items.count))] }),
                 ]
@@ -137,12 +140,12 @@ enum AgentTools {
                 library.delete(contents.playlist)
                 return "ok"
             },
-            MCPTool("set_category", "Move items to a category: movie, episode, home_video, music_video, song or audiobook; automatic puts them back where MacShow would.",
+            MCPTool("set_category", "Move items to a category: movie, episode, sport, documentary, home_video, music_video, song or audiobook; automatic puts them back where MacShow would. MacShow sorts by folder (Sports, Documentaries, Music Videos) and length; use this for what those rules miss, judging by title and folder. For a sport, edit_info's genre sets the kind of sport (\"Football\", \"Formula 1\").",
                     input: ["type": "object", "required": ["ids", "category"], "properties": [
-                        "ids": ids, "category": ["type": "string", "enum": ["movie", "episode", "home_video", "music_video", "song", "audiobook", "automatic"]],
+                        "ids": ids, "category": ["type": "string", "enum": ["movie", "episode", "sport", "documentary", "home_video", "music_video", "song", "audiobook", "automatic"]],
                     ]], changesLibrary: true) { arguments in
-                let kinds: [String: MediaItem.Kind] = ["movie": .movie, "episode": .episode, "home_video": .homeVideo,
-                                                        "music_video": .musicVideo, "song": .music, "audiobook": .audiobook]
+                let kinds: [String: MediaItem.Kind] = ["movie": .movie, "episode": .episode, "sport": .sport, "documentary": .documentary,
+                                                        "home_video": .homeVideo, "music_video": .musicVideo, "song": .music, "audiobook": .audiobook]
                 let category = arguments["category"]?.string ?? ""
                 guard category == "automatic" || kinds[category] != nil else { throw MCPToolError("Unknown category \(category).") }
                 library.setCategory(kinds[category], for: try items(arguments))
@@ -226,6 +229,9 @@ enum AgentTools {
         if let season = item.season { fields["season"] = .number(Double(season)) }
         if let episode = item.episode { fields["episode"] = .number(Double(episode)) }
         if let year = item.year { fields["year"] = .number(Double(year)) }
+        if let genre = item.genre { fields["genre"] = .string(genre) }
+        // The folder it's in says a lot about what it is ("Movies/Sports/Formula 1").
+        if item.isVideo { fields["folder"] = .string(item.url.deletingLastPathComponent().pathComponents.suffix(3).joined(separator: "/")) }
         return .object(fields)
     }
 }

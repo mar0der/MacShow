@@ -69,6 +69,11 @@ public struct LibraryIndex: Sendable {
     /// Videos in a "Music Videos" folder, named like "(Official Video)", or moved
     /// there. They're also in `songs`, where they play without the picture.
     public var musicVideos: [MediaItem] = []
+    /// Videos in a Sport or Sports folder (or moved there), grouped on screen by
+    /// `sportCategory(of:)`.
+    public var sports: [MediaItem] = []
+    /// Videos in a Documentaries folder, or moved there.
+    public var documentaries: [MediaItem] = []
     /// Items in folders marked Adult, when they're shown at all. They appear
     /// nowhere else: not in Home, search, `itemsByID` or any other list.
     public var adult: [MediaItem] = []
@@ -92,6 +97,7 @@ public struct LibraryIndex: Sendable {
 
     public var isEmpty: Bool {
         songs.isEmpty && movies.isEmpty && homeVideos.isEmpty && musicVideos.isEmpty && shows.isEmpty && books.isEmpty
+            && sports.isEmpty && documentaries.isEmpty
     }
 
     /// Groups `items`, applying `rules`. Adult items are left out entirely
@@ -189,6 +195,8 @@ public struct LibraryIndex: Sendable {
 
         movies = (byKind[.movie] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         homeVideos = (byKind[.homeVideo] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        sports = (byKind[.sport] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        documentaries = (byKind[.documentary] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         shows = Dictionary(grouping: byKind[.episode] ?? [], by: Show.id(for:))
             .map { key, episodes in
                 let sorted = episodes.sorted { ($0.season ?? 0, $0.episode ?? 0) < ($1.season ?? 0, $1.episode ?? 0) }
@@ -220,7 +228,8 @@ public struct LibraryIndex: Sendable {
     static let homeVideoMaxDuration: Double = 20 * 60
 
     /// Where a video goes when you haven't chosen: music videos by folder or
-    /// name, Personal folders and short clips to Home Videos, the rest stays.
+    /// name, Personal folders to Home Videos, Sports and Documentaries folders to
+    /// theirs, other short clips to Home Videos, the rest stays.
     static func category(of item: MediaItem, inPersonalFolder: Bool) -> MediaItem.Kind {
         guard item.kind == .movie || item.kind == .episode else { return item.kind }
         let path = item.path.lowercased()
@@ -229,9 +238,26 @@ public struct LibraryIndex: Sendable {
             return .musicVideo
         }
         if inPersonalFolder { return .homeVideo }
+        let folders = item.url.deletingLastPathComponent().pathComponents.map { $0.lowercased() }
+        if folders.contains(where: sportsFolders.contains) { return .sport }
+        if folders.contains(where: ["documentaries", "documentary"].contains) { return .documentary }
         if item.kind == .movie, item.duration < homeVideoMaxDuration { return .homeVideo }
         return item.kind
     }
+
+    private static let sportsFolders: Set<String> = ["sport", "sports"]
+
+    /// The kind of sport: the item's genre (from its tags, Get Info or an agent),
+    /// else the folder right under the Sports folder ("Sports/Formula 1/…").
+    public static func sportCategory(of item: MediaItem) -> String? {
+        if let genre = item.genre { return genre }
+        let folders = item.url.deletingLastPathComponent().pathComponents
+        guard let sports = folders.lastIndex(where: { sportsFolders.contains($0.lowercased()) }), sports + 1 < folders.count else { return nil }
+        return folders[sports + 1]
+    }
+
+    /// Adult videos shorter than this are clips; longer ones are full videos.
+    public static func isClip(_ item: MediaItem) -> Bool { item.duration < 5 * 60 }
 
     /// "Artist - Song (Official Music Video)" without tags → artist "Artist", title "Song".
     static func musicVideoDetails(_ item: MediaItem) -> MediaItem {

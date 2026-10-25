@@ -13,7 +13,7 @@ struct SearchResultsView: View {
         let artists = index.artists.filter { matches($0.name.lowercased()) }
         let albums = index.albums.filter { matches("\($0.title) \($0.artist)".lowercased()) }
         let songs = zip(index.songs, index.songSearchKeys).lazy.filter { matches($0.1) }.prefix(50).map(\.0)
-        let movies = (index.movies + index.homeVideos).filter { matches($0.title.lowercased()) }
+        let movies = (index.movies + index.sports + index.documentaries + index.homeVideos).filter { matches($0.title.lowercased()) }
         let shows = index.shows.filter { matches($0.title.lowercased()) }
         let books = index.books.filter { matches("\($0.title) \($0.author ?? "")".lowercased()) }
 

@@ -3,11 +3,13 @@ import SwiftUI
 
 private let videoGrid = [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 24)]
 
-/// Movies or Home Videos: a grid of stills.
+/// Movies, Home Videos and the like: a grid of stills. `section` names the
+/// section for its choice of sources.
 struct VideoGridView: View {
     let title: LocalizedStringKey
     let emptyTitle: LocalizedStringKey
     let icon: String
+    let section: String
     let videos: [MediaItem]
 
     var body: some View {
@@ -15,15 +17,120 @@ struct VideoGridView: View {
             if videos.isEmpty {
                 EmptyLibraryView(title: emptyTitle, icon: icon)
             } else {
-                ScrollView {
-                    LazyVGrid(columns: videoGrid, spacing: 28) {
-                        ForEach(videos) { MovieTile(movie: $0) }
+                SourceFiltered(section: section, items: videos) { shown in
+                    ScrollView {
+                        LazyVGrid(columns: videoGrid, spacing: 28) {
+                            ForEach(shown) { MovieTile(movie: $0) }
+                        }
+                        .padding(28)
                     }
-                    .padding(28)
                 }
             }
         }
         .navigationTitle(title)
+    }
+}
+
+/// Shows `items` from the drives and network shares chosen for `section` in its
+/// toolbar's Sources menu, so a slow share can be left out of one section and
+/// kept in another. The menu appears when there's more than one source.
+struct SourceFiltered<Content: View>: View {
+    let section: String
+    let items: [MediaItem]
+    @ViewBuilder let content: ([MediaItem]) -> Content
+    @Environment(Library.self) private var library
+    /// Hidden sources, one per line; "/" is this Mac.
+    @AppStorage private var hidden: String
+
+    init(section: String, items: [MediaItem], @ViewBuilder content: @escaping ([MediaItem]) -> Content) {
+        self.section = section
+        self.items = items
+        self.content = content
+        _hidden = AppStorage(wrappedValue: "", "hiddenSources." + section)
+    }
+
+    var body: some View {
+        let hiddenSources = Set(hidden.split(separator: "\n").map(String.init))
+        let sources = Set(items.map { $0.source ?? "/" }).sorted()
+        content(items.filter { !hiddenSources.contains($0.source ?? "/") })
+            .toolbar {
+                if sources.count > 1 {
+                    Menu {
+                        ForEach(sources, id: \.self) { source in
+                            Toggle(name(of: source), isOn: Binding(
+                                get: { !hiddenSources.contains(source) },
+                                set: { shown in
+                                    hidden = (shown ? hiddenSources.subtracting([source]) : hiddenSources.union([source])).sorted().joined(separator: "\n")
+                                }))
+                        }
+                    } label: {
+                        Label("Sources", systemImage: "externaldrive.connected.to.line.below")
+                    }
+                    .help("Choose which drives and network shares this section shows")
+                }
+            }
+    }
+
+    /// "This Mac", "SSD", or "Media on dspeter" for a network share.
+    private func name(of source: String) -> String {
+        guard source != "/" else { return String(localized: "This Mac") }
+        let host = library.folders.lazy
+            .first { $0.path.hasPrefix("/Volumes/\(source)/") && $0.remountURL != nil }
+            .flatMap { $0.remountURL.flatMap(URL.init(string:))?.host?.split(separator: ".").first }
+        return host.map { String(localized: "\(source) on \(String($0))") } ?? source
+    }
+}
+
+/// Sports, grouped by kind of sport ("Formula 1", "Football"…); the rest under Other.
+struct SportsView: View {
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        let sports = library.index.sports
+        Group {
+            if sports.isEmpty {
+                EmptyLibraryView(title: "No Sports", icon: "sportscourt")
+            } else {
+                SourceFiltered(section: "sports", items: sports) { shown in
+                    let groups = Dictionary(grouping: shown) { LibraryIndex.sportCategory(of: $0) ?? "" }
+                    // Named sports in order, Other last.
+                    let names = groups.keys.sorted { $1.isEmpty || !$0.isEmpty && $0.localizedStandardCompare($1) == .orderedAscending }
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 32) {
+                            ForEach(names, id: \.self) { name in
+                                VStack(alignment: .leading, spacing: 14) {
+                                    Text(name.isEmpty ? String(localized: "Other") : name).font(.title3.weight(.semibold))
+                                    LazyVGrid(columns: videoGrid, spacing: 28) {
+                                        ForEach(groups[name] ?? []) { MovieTile(movie: $0) }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(28)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Sports")
+    }
+}
+
+/// Adult videos, as full videos or as clips (under 5 minutes).
+struct AdultView: View {
+    @Environment(Library.self) private var library
+    @AppStorage("adultShowsClips") private var clips = false
+
+    var body: some View {
+        VideoGridView(title: "Adult", emptyTitle: clips ? "No Clips" : "No Full Videos", icon: "eye.slash", section: "adult",
+                      videos: library.index.adult.filter { LibraryIndex.isClip($0) == clips })
+            .toolbar {
+                Picker("Length", selection: $clips) {
+                    Text("Full Videos").tag(false)
+                    Text("Clips").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .help("Clips are shorter than 5 minutes")
+            }
     }
 }
 
@@ -96,10 +203,10 @@ struct MovieTile: View {
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
 
-    /// Movies open their page; home videos and music videos just play.
+    /// Movies and documentaries open their page; other videos just play.
     var body: some View {
         Group {
-            if movie.kind == .movie, let id = movie.id {
+            if movie.kind == .movie || movie.kind == .documentary, let id = movie.id {
                 NavigationLink(value: MovieRef(id: id)) { label }
             } else {
                 Button { player.play([movie], showVideo: true) } label: { label }
@@ -176,9 +283,11 @@ struct ShowsView: View {
             if shows.isEmpty {
                 EmptyLibraryView(title: "No TV Shows", icon: "tv")
             } else {
+                SourceFiltered(section: "shows", items: shows.flatMap(\.episodes)) { shown in
+                let shownPaths = Set(shown.map(\.path))
                 ScrollView {
                     LazyVGrid(columns: videoGrid, spacing: 28) {
-                        ForEach(shows) { show in
+                        ForEach(shows.filter { $0.episodes.contains { shownPaths.contains($0.path) } }) { show in
                             NavigationLink(value: ShowRef(id: show.id)) {
                                 VStack(alignment: .leading, spacing: 8) {
                                     ShowArtwork(show: show)
@@ -200,6 +309,7 @@ struct ShowsView: View {
                         }
                     }
                     .padding(28)
+                }
                 }
             }
         }

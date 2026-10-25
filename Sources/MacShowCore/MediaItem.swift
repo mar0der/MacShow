@@ -5,8 +5,9 @@ import GRDB
 public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
         case music, movie, episode, audiobook
-        /// Set by the library (short videos, Personal folders) or by you, never by the scanner.
-        case homeVideo, musicVideo
+        /// Set by the library (short videos, Personal, Sports and Documentaries folders)
+        /// or by you, never by the scanner.
+        case homeVideo, musicVideo, sport, documentary
     }
 
     public var id: Int64?
@@ -32,13 +33,21 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     public var modified: Double
     public var addedAt: Date
 
-    public var url: URL { URL(fileURLWithPath: path) }
+    /// Saying it's a file keeps Foundation from asking the disk, which on a network
+    /// share is a round trip each time (and the index sorts by `url` parts).
+    public var url: URL { URL(fileURLWithPath: path, isDirectory: false) }
 
     /// Songs and music videos: no resume points, and they sit in Songs.
     public var isMusic: Bool { kind == .music || kind == .musicVideo }
 
     /// Movies, episodes, home videos and music videos.
-    public var isVideo: Bool { kind == .movie || kind == .episode || kind == .homeVideo || kind == .musicVideo }
+    public var isVideo: Bool { [.movie, .episode, .homeVideo, .musicVideo, .sport, .documentary].contains(kind) }
+
+    /// The drive or network share the file is on ("Media"), or nil for this Mac's own disk.
+    public var source: String? {
+        let parts = path.split(separator: "/")
+        return parts.count > 2 && parts[0] == "Volumes" ? String(parts[1]) : nil
+    }
 
     /// The name albums are grouped and listed under.
     public var albumArtistOrArtist: String { albumArtist ?? artist ?? "Unknown Artist" }

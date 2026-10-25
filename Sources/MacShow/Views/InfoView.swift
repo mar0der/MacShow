@@ -136,7 +136,7 @@ struct InfoView: View {
     static func searchKind(_ items: [MediaItem]) -> ArtworkFetcher.SearchKind {
         switch items.first?.kind {
         case .episode: .tvShow
-        case .movie, .homeVideo: .movie
+        case .movie, .homeVideo, .documentary, .sport: .movie
         case .musicVideo: .musicVideo
         default: .album
         }
@@ -147,7 +147,7 @@ struct InfoView: View {
         guard let item = items.first else { return "" }
         switch item.kind {
         case .episode: return item.show ?? item.title
-        case .movie, .homeVideo: return [item.title, item.year.map(String.init)].compactMap { $0 }.joined(separator: " ")
+        case .movie, .homeVideo, .documentary, .sport: return [item.title, item.year.map(String.init)].compactMap { $0 }.joined(separator: " ")
         case .musicVideo: return [item.artist, item.title].compactMap { $0 }.joined(separator: " ")
         // Untagged albums are named after their folder, as in the library.
         default: return [item.albumArtist ?? item.artist, item.album ?? item.url.deletingLastPathComponent().lastPathComponent]

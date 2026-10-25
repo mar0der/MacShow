@@ -101,6 +101,8 @@ struct JumpBackInCard: View {
         case .episode: "Episode"
         case .audiobook: "Audiobook"
         case .homeVideo: "Home Video"
+        case .sport: "Sport"
+        case .documentary: "Documentary"
         default: "Movie"
         }
     }

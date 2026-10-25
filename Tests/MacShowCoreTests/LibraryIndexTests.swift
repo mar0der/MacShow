@@ -246,6 +246,38 @@ struct CategoryTests {
         #expect(Set(index.songs.compactMap(\.id)) == [3, 4])
     }
 
+    @Test func sportsAndDocumentariesGoByFolder() {
+        var tagged = video("/NAS/Movies/Sports/Ludogorets-Basel_22_10_14.ts", id: 5)
+        tagged.genre = "Football"
+        let index = LibraryIndex(items: [
+            video("/NAS/Movies/Sports/Formula 1/2023/Monza.mkv", id: 1),
+            video("/NAS/Movies/Sports/Ludogorets-Liverpool_26_11_14.ts", id: 2),
+            video("/NAS/Movies/sport/Highlights.mp4", minutes: 3, id: 3),
+            video("/NAS/Movies/Documentaries/Once upon a time in the East.avi", id: 4),
+            tagged,
+            video("/NAS/Movies/1979.Kramer.vs.Kramer.DVDRip/kramer.avi", id: 6),
+        ])
+        // A short clip in a Sports folder is still sport; "vs" in a title isn't.
+        #expect(Set(index.sports.compactMap(\.id)) == [1, 2, 3, 5])
+        #expect(index.documentaries.map(\.id) == [4])
+        #expect(index.movies.map(\.id) == [6])
+        let byID = Dictionary(uniqueKeysWithValues: index.sports.map { ($0.id!, $0) })
+        // The folder under Sports is the kind of sport; a genre (yours or an agent's) wins.
+        #expect(LibraryIndex.sportCategory(of: byID[1]!) == "Formula 1")
+        #expect(LibraryIndex.sportCategory(of: byID[2]!) == nil)
+        #expect(LibraryIndex.sportCategory(of: byID[5]!) == "Football")
+    }
+
+    @Test func adultClipsAreShorterThanFiveMinutes() {
+        #expect(LibraryIndex.isClip(video("/a.mp4", minutes: 4.9, id: 1)))
+        #expect(!LibraryIndex.isClip(video("/b.mp4", minutes: 5, id: 2)))
+    }
+
+    @Test func itemsSayWhichDriveTheyAreOn() {
+        #expect(makeItem("/Volumes/Media/Movies/a.mkv").source == "Media")
+        #expect(makeItem("/Users/me/Movies/a.mkv").source == nil)
+    }
+
     @Test func yourChoiceOfCategoryWins() {
         var short = video("/Movies/Short Film.mkv", minutes: 12, id: 1)
         short.kind = .movie

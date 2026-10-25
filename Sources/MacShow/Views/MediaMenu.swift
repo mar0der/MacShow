@@ -71,7 +71,8 @@ struct FolderRuleMenu: View {
 }
 
 /// Move To: the category items are listed under. Videos move between Movies,
-/// TV Shows, Home Videos and Music Videos; audio between Songs and Audiobooks.
+/// TV Shows, Sports, Documentaries, Home Videos and Music Videos; audio between
+/// Songs and Audiobooks.
 struct CategoryMenu: View {
     let items: [MediaItem]
     @Environment(Library.self) private var library
@@ -80,7 +81,8 @@ struct CategoryMenu: View {
         if !items.isEmpty {
             let isVideo = items.allSatisfy(\.isVideo)
             let choices: [(LocalizedStringKey, MediaItem.Kind)] = isVideo
-                ? [("Movies", .movie), ("TV Shows", .episode), ("Home Videos", .homeVideo), ("Music Videos", .musicVideo)]
+                ? [("Movies", .movie), ("TV Shows", .episode), ("Sports", .sport), ("Documentaries", .documentary),
+                   ("Home Videos", .homeVideo), ("Music Videos", .musicVideo)]
                 : [("Songs", .music), ("Audiobooks", .audiobook)]
             let current = Set(items.map(\.kind))
             Menu("Move To") {
