@@ -20,5 +20,8 @@
 	<!-- Missing album artwork from the iTunes Search API (can be turned off in Settings). -->
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- AirPlay: the Apple TV fetches the video from a small HTTP server in the app. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
 </dict>
 </plist>
