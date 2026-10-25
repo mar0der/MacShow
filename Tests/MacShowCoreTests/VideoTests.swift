@@ -170,6 +170,12 @@ struct ShowMarkerTests {
 }
 
 struct MediaDetailsTests {
+    @Test func partsOfAMovieLookUpTheWholeMovie() {
+        #expect(Library.lookupTitle("Gandhi – Part 1") == "Gandhi")
+        #expect(Library.lookupTitle("Live Free or Die Hard - Part 2") == "Live Free or Die Hard")
+        #expect(Library.lookupTitle("Part of the Problem") == "Part of the Problem")
+    }
+
     @Test func readsMovieAndShowDetails() throws {
         let movie = #"{"title":"Iron Man","release_date":"2008-04-30","runtime":126,"vote_average":7.7,"tagline":"Heroes aren't born.","overview":"Tony Stark...","genres":[{"name":"Action"}],"credits":{"cast":[{"name":"Robert Downey Jr.","character":"Tony Stark","profile_path":"/r.jpg"}],"crew":[{"name":"Jon Favreau","job":"Director"},{"name":"X","job":"Writer"}]},"backdrop_path":"/b.jpg"}"#
         let iron = try #require(ArtworkFetcher.mediaDetails(from: Data(movie.utf8)))

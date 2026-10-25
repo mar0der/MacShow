@@ -146,10 +146,10 @@ struct VideoPlayerView: View {
                 CastScreen(cast: cast)
             }
 
-            if player.isBuffering {
+            if player.isBuffering || player.isOpening {
                 VStack(spacing: 10) {
                     ProgressView().controlSize(.large)
-                    Text("Buffering… \(player.bufferingPercent)%").font(.callout.weight(.semibold))
+                    Text(player.isBuffering ? "Buffering… \(player.bufferingPercent)%" : "Loading…").font(.callout.weight(.semibold))
                 }
                 .padding(20)
                 .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))

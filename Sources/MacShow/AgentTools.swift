@@ -57,7 +57,7 @@ enum AgentTools {
                     }),
                 ]
             },
-            MCPTool("library_summary", "How much is in the library, and its playlists.") { _ in
+            MCPTool("library_summary", "How much is in the library, its playlists, and what the library scan is doing.") { _ in
                 let index = library.index
                 return [
                     "songs": .number(Double(index.songs.count)), "albums": .number(Double(index.albums.count)),
@@ -65,6 +65,11 @@ enum AgentTools {
                     "movies": .number(Double(index.movies.count)), "shows": .number(Double(index.shows.count)),
                     "music_videos": .number(Double(index.musicVideos.count)), "home_videos": .number(Double(index.homeVideos.count)),
                     "sports": .number(Double(index.sports.count)), "documentaries": .number(Double(index.documentaries.count)),
+                    "scanning": library.scanningFolder.map { folder in
+                        .object(["folder": .string(folder), "done": library.scanProgress.map { .number(Double($0.done)) } ?? .null,
+                                 "total": library.scanProgress.map { .number(Double($0.total)) } ?? .null,
+                                 "folders_waiting": .number(Double(library.foldersWaiting))])
+                    } ?? .null,
                     "audiobooks": .number(Double(index.books.count)),
                     "playlists": .array(library.playlists.map { ["id": .number(Double($0.playlist.id ?? 0)), "name": .string($0.playlist.name), "items": .number(Double($0.items.count))] }),
                 ]

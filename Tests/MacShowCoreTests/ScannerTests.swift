@@ -87,6 +87,23 @@ struct ScannerTests {
         #expect(episode.episode == 5)
     }
 
+    @Test func reportsProgressAsItReads() async throws {
+        final class Updates: @unchecked Sendable {
+            private let lock = NSLock()
+            private var list: [ScanProgress] = []
+            func append(_ update: ScanProgress) { lock.withLock { list.append(update) } }
+            var all: [ScanProgress] { lock.withLock { list } }
+        }
+        let library = try TempLibrary()
+        let updates = Updates()
+        await library.scanner.scan(folder: library.folder) { updates.append($0) }
+        let all = updates.all
+        // Once listed: none of 3 read; then each file as it's read.
+        #expect(all.first?.done == 0 && all.first?.total == 3 && all.first?.file == nil)
+        #expect(all.last?.done == 3 && all.last?.total == 3)
+        #expect(Set(all.compactMap(\.file)) == ["song.flac", "book.m4b", "My.Show.S02E05.720p.mkv"])
+    }
+
     @Test func rescanOnlyReadsChangesAndDropsMissingFiles() async throws {
         let library = try TempLibrary()
         await library.scanner.scan(folder: library.folder)

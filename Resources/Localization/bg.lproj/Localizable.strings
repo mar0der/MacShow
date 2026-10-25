@@ -386,3 +386,10 @@
 "Sports" = "Спорт";
 "This Mac" = "Този Mac";
 "Buffering… %lld%%" = "Зареждане… %lld%%";
+"%lld more folders waiting" = "Още %lld папки чакат";
+"%lld of %lld new or changed files" = "%1$lld от %2$lld нови или променени файла";
+"Loading…" = "Зареждане…";
+"Looking for files…" = "Търсене на файлове…";
+"Scanning %@" = "Сканиране на %@";
+"Scanning %@ on %@" = "Сканиране на %1$@ на %2$@";
+"Up to date" = "Актуално";

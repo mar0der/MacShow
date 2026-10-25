@@ -1,5 +1,13 @@
 import Foundation
 
+/// How far a scan is: `done` of the `total` new or changed files read, and
+/// the name of the one just read.
+public struct ScanProgress: Equatable, Sendable {
+    public var done: Int
+    public var total: Int
+    public var file: String?
+}
+
 public struct ScanResult: Equatable, Sendable {
     public var added = 0
     public var updated = 0
@@ -31,7 +39,8 @@ public final class LibraryScanner: Sendable {
     /// Nothing under `excluded` (canonical paths of folders or files) is indexed,
     /// and items already indexed there are removed.
     @discardableResult
-    public func scan(folder: URL, excluding excluded: [String] = []) async -> ScanResult {
+    public func scan(folder: URL, excluding excluded: [String] = [],
+                     progress: (@Sendable (ScanProgress) -> Void)? = nil) async -> ScanResult {
         let folder = URL(fileURLWithPath: folder.canonicalPath)
         guard let (files, unreadable) = Self.mediaFiles(in: folder, excluding: excluded) else { return ScanResult() }
 
@@ -44,6 +53,7 @@ public final class LibraryScanner: Sendable {
             if stamps[file.url.path] == nil { result.added += 1 } else { result.updated += 1 }
         }
         let seen = Set(files.map(\.url.path))
+        progress?(ScanProgress(done: 0, total: pending.count))
 
         await withTaskGroup(of: MediaItem?.self) { group in
             var batch: [MediaItem] = []
@@ -60,8 +70,11 @@ public final class LibraryScanner: Sendable {
                 }
             }
             for _ in 0..<Self.parallelReads { startNextRead() }
+            var done = 0
             for await item in group {
+                done += 1
                 if let item { batch.append(item) }
+                progress?(ScanProgress(done: done, total: pending.count, file: item?.url.lastPathComponent))
                 if batch.count >= Self.batchSize || (!batch.isEmpty && lastSave.duration(to: .now) >= Self.saveInterval) {
                     try? database.upsert(batch)
                     batch.removeAll()

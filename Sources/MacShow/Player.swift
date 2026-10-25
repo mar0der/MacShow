@@ -170,6 +170,11 @@ final class Player {
     /// Paused until enough is read ahead (a slow network share), and how far along that is (0–100).
     private(set) var isBuffering = false
     private(set) var bufferingPercent = 0
+    /// From starting a file until its first frame (or sound) plays.
+    private(set) var isOpening = false
+    /// A video being opened: its screen shows straight away, with a spinner, not
+    /// only once mpv has the file open (seconds, on a slow network share).
+    var isOpeningVideo: Bool { isOpening && !isVideo && currentItem.map { $0.isVideo && $0.kind != .musicVideo } == true }
     /// The video keeps playing in a corner while you browse the library.
     /// Starting something new brings it back full size.
     var isVideoMinimized = false
@@ -734,13 +739,17 @@ final class Player {
                             self.sleepTimer = .off
                         }
                         self.loadedItem = nil
+                        self.isOpening = false
                         self.position = 0
                         self.lastSavedSecond = -1
                     }
                 }
+            case MPV_EVENT_START_FILE:
+                DispatchQueue.main.async { MainActor.assumeIsolated { self.isOpening = true } }
             case MPV_EVENT_PLAYBACK_RESTART:  // after a seek or a new file starts
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
+                        self.isOpening = false
                         self.nowPlaying?.update()
                     }
                 }

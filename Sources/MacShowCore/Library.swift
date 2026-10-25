@@ -24,6 +24,11 @@ public final class Library {
     /// Their items stay in the library, shown as unavailable.
     public private(set) var offlineFolders: Set<String> = []
     public private(set) var isScanning = false
+    /// The folder being scanned now; how far along (nil while its files are
+    /// still being listed); and how many more folders are waiting.
+    public private(set) var scanningFolder: String?
+    public private(set) var scanProgress: ScanProgress?
+    public var foldersWaiting: Int { jobs.count }
     /// Goes up each time `index` is replaced; cheap to watch for "the library changed".
     public private(set) var generation = 0
     /// Details changed with Get Info, by path (already applied to `index`).
@@ -300,7 +305,11 @@ public final class Library {
                     // A folder removed since this was queued must not be re-indexed.
                     let canonical = URL(fileURLWithPath: path).canonicalPath
                     guard watchedRoots.contains(where: { canonical == $0 || canonical.hasPrefix($0 + "/") }) else { continue }
-                    await scanner.scan(folder: URL(fileURLWithPath: path), excluding: FolderRules(folderRules).excludedPaths)
+                    scanningFolder = path
+                    scanProgress = nil
+                    await scanner.scan(folder: URL(fileURLWithPath: path), excluding: FolderRules(folderRules).excludedPaths) { [weak self] progress in
+                        Task { @MainActor in if self?.scanningFolder == path { self?.scanProgress = progress } }
+                    }
                 case .remove(let folder):
                     // Items another watched folder still covers stay, keeping their
                     // playlist entries and resume points.
@@ -312,6 +321,8 @@ public final class Library {
             }
             worker = nil
             isScanning = false
+            scanningFolder = nil
+            scanProgress = nil
             fetchMissingArtwork()
         }
     }
@@ -487,15 +498,21 @@ public final class Library {
     /// or not found). Looked up once, then kept.
     public func details(for item: MediaItem) async -> MediaDetails? {
         let isShow = item.kind == .episode
-        let key = isShow ? "tv:" + Show.id(for: item) : "movie:\(item.title.lowercased()):\(item.year ?? 0)"
+        let title = Self.lookupTitle(item.title)
+        let key = isShow ? "tv:" + Show.id(for: item) : "movie:\(title.lowercased()):\(item.year ?? 0)"
         let database = database
         // Details cached before cast members carried their TMDB id are fetched again once.
         if let cached = try? database.cachedDetails(key), cached.cast.first.map({ $0.id != nil }) ?? true { return cached }
         let fetcher = ArtworkFetcher(tmdbKey: UserDefaults.standard.string(forKey: ArtworkFetcher.tmdbKeyDefault))
         let found = isShow ? await fetcher.showDetails(name: item.show ?? item.title)
-                           : await fetcher.movieDetails(title: item.title, year: item.year)
+                           : await fetcher.movieDetails(title: title, year: item.year)
         if let found { try? database.cacheDetails(found, key: key) }
         return found
+    }
+
+    /// The title to look a movie up by: a part of one ("Gandhi – Part 1") is the whole movie.
+    nonisolated static func lookupTitle(_ title: String) -> String {
+        title.replacingOccurrences(of: #"\s+[–-]\s+Part\s+\d+$"#, with: "", options: .regularExpression)
     }
 
     /// An actor's or director's TMDB profile (by the id from a cast list), looked up once.

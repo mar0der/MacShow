@@ -92,7 +92,7 @@ struct RootView: View {
         // Videos play in this window, TV-app style. Back (or Esc) returns here,
         // with the video carrying on in a corner.
         Group {
-            if player.isVideo, !player.isVideoMinimized {
+            if player.isVideo || player.isOpeningVideo, !player.isVideoMinimized {
                 VideoPlayerView()
             } else {
                 browser.overlay(alignment: .bottomTrailing) {
@@ -199,13 +199,7 @@ struct RootView: View {
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         .safeAreaInset(edge: .bottom) {
-            if library.isScanning {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Updating library…").font(.caption).foregroundStyle(.secondary)
-                }
-                .padding(12)
-            }
+            if library.isScanning { ScanStatusView() }
         }
     }
 
@@ -251,6 +245,42 @@ struct RootView: View {
 }
 
 /// Shown when a section has nothing in it yet.
+/// What the library scan is doing: which folder, how far, the file just read,
+/// and how many folders wait their turn.
+private struct ScanStatusView: View {
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(title).font(.caption.weight(.semibold)).lineLimit(1)
+            }
+            if let progress = library.scanProgress, progress.total > 0 {
+                ProgressView(value: Double(progress.done), total: Double(progress.total)).controlSize(.small)
+                Text("\(progress.done) of \(progress.total) new or changed files")
+                if let file = progress.file { Text(file).lineLimit(1).truncationMode(.middle) }
+            } else if library.scanningFolder != nil {
+                Text(library.scanProgress == nil ? LocalizedStringKey("Looking for files…") : LocalizedStringKey("Up to date"))
+            }
+            if library.foldersWaiting > 0 { Text("\(library.foldersWaiting) more folders waiting") }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(12)
+        .help(library.scanningFolder ?? "")
+    }
+
+    /// "Scanning Music on Media", "Scanning ~/Movies"
+    private var title: String {
+        guard let path = library.scanningFolder else { return String(localized: "Updating library…") }
+        let folder = URL(fileURLWithPath: path, isDirectory: true)
+        let parts = folder.pathComponents
+        if parts.count > 2, parts[1] == "Volumes" { return String(localized: "Scanning \(folder.lastPathComponent) on \(parts[2])") }
+        return String(localized: "Scanning \((path as NSString).abbreviatingWithTildeInPath)")
+    }
+}
+
 struct EmptyLibraryView: View {
     let title: LocalizedStringKey
     let icon: String
