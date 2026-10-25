@@ -13,8 +13,11 @@ func importPlaylists(into library: Library) {
     let alert = NSAlert()
     do {
         let result = try library.importPlaylists(from: url)
-        alert.messageText = result.playlists == 0 ? "No playlists imported" : "Imported \(result.playlists) playlist\(result.playlists == 1 ? "" : "s")"
+        alert.messageText = result.playlists == 0 && result.history == 0 ? "Nothing imported" : "Imported \(result.playlists) playlist\(result.playlists == 1 ? "" : "s")"
         alert.informativeText = "\(result.songs) songs added."
+        if result.history > 0 || result.favorites > 0 {
+            alert.informativeText += " Play counts brought over for \(result.history) songs, and \(result.favorites) loved songs added to Favorites."
+        }
         if result.missing > 0 {
             alert.informativeText += " \(result.missing) weren't found in your MacShow library: songs streamed from Apple Music, or files in folders MacShow doesn't watch."
         }

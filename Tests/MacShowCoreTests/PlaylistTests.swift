@@ -142,3 +142,50 @@ struct SmartListTests {
         #expect(try database.playStats()[a] == nil)
     }
 }
+
+struct FavoriteTests {
+    static let export = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0"><dict>
+    <key>Tracks</key><dict>
+      <key>1</key><dict><key>Location</key><string>file:///m/a.mp3</string><key>Play Count</key><integer>12</integer><key>Play Date UTC</key><date>2025-03-01T10:00:00Z</date><key>Loved</key><true/></dict>
+      <key>2</key><dict><key>Location</key><string>file:///m/b.mp3</string><key>Rating</key><integer>80</integer></dict>
+      <key>3</key><dict><key>Location</key><string>file:///m/c.mp3</string><key>Rating</key><integer>100</integer><key>Rating Computed</key><true/></dict>
+      <key>4</key><dict><key>Location</key><string>file:///m/d.mp3</string></dict>
+    </dict>
+    <key>Playlists</key><array/>
+    </dict></plist>
+    """
+
+    @Test func readsMusicHistory() throws {
+        let history = try PlaylistFile.musicLibraryHistory(Data(Self.export.utf8)).sorted { $0.path < $1.path }
+        #expect(history.map(\.path) == ["/m/a.mp3", "/m/b.mp3"])
+        #expect(history[0].playCount == 12 && history[0].isFavorite && history[0].lastPlayed != nil)
+        #expect(history[1].playCount == 0 && history[1].isFavorite)
+    }
+
+    @MainActor
+    @Test func importsHistoryAndLovesSongs() async throws {
+        let database = try LibraryDatabase.inMemory()
+        try database.upsert([makeItem("/m/a.mp3"), makeItem("/m/b.mp3"), makeItem("/m/c.mp3")])
+        let library = Library(database: database, artwork: ArtworkStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("art-\(UUID())")))
+        for _ in 0..<50 where library.index.songs.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        let byPath = Dictionary(uniqueKeysWithValues: library.index.songs.map { ($0.path, $0) })
+        let a = try #require(byPath["/m/a.mp3"]), c = try #require(byPath["/m/c.mp3"])
+        library.recordPlay(of: a)  // MacShow's own count: 1, lower than Music's 12
+
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("Library-\(UUID()).xml")
+        try Data(Self.export.utf8).write(to: file)
+        let result = try library.importPlaylists(from: file)
+        #expect(result.history == 1 && result.favorites == 2)
+        library.flushPendingWrites()
+        #expect(try database.playStats()[a.id!]?.playCount == 12)
+        #expect(library.songs(in: .favorites).map(\.path) == ["/m/a.mp3", "/m/b.mp3"])
+
+        library.toggleFavorite([a, c])  // not all loved: loves both
+        #expect(library.isFavorite([a, c]))
+        library.toggleFavorite([a, c])  // all loved: unloves both
+        #expect(try database.favorites() == [byPath["/m/b.mp3"]!.id!])
+    }
+}

@@ -147,6 +147,7 @@ struct TrackRow: View {
     let isCurrent: Bool
     let play: () -> Void
     @Environment(Library.self) private var library
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -173,10 +174,20 @@ struct TrackRow: View {
                 Image(systemName: "externaldrive.badge.xmark").foregroundStyle(.secondary)
                     .help("On a drive that isn't connected")
             }
+            // Loved songs show their heart; others offer one on hover.
+            let loved = library.isFavorite([track])
+            Button { library.toggleFavorite([track]) } label: {
+                Label(loved ? "Remove from Favorites" : "Love", systemImage: loved ? "heart.fill" : "heart").labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(loved ? AnyShapeStyle(.pink) : AnyShapeStyle(.secondary))
+            .opacity(loved || hovering ? 1 : 0)
+            .help(loved ? "Remove from Favorites" : "Love")
             Text(Format.time(track.duration)).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
         .frame(height: showsArtist ? 46 : 40)
+        .onHover { hovering = $0 }
         .background(isCurrent ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: play)

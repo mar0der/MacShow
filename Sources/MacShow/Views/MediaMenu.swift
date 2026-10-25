@@ -14,6 +14,7 @@ struct MediaMenu: View {
         Button("Play Next") { player.playNext(playable) }
         Button("Add to Queue") { player.addToQueue(playable) }
         Divider()
+        Button(library.isFavorite(items) ? "Remove from Favorites" : "Love") { library.toggleFavorite(items) }
         Menu("Add to Playlist") {
             Button("New Playlist") { library.createPlaylist(named: Self.newPlaylistName(library), with: playable) }
             if !library.playlists.isEmpty { Divider() }

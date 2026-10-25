@@ -59,6 +59,12 @@ struct MovieDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    let loved = library.isFavorite([movie])
+                    Button { library.toggleFavorite([movie]) } label: {
+                        Label(loved ? "Remove from Favorites" : "Love", systemImage: loved ? "heart.fill" : "heart").labelStyle(.iconOnly)
+                    }
+                    .controlSize(.large)
+                    .help(loved ? "Remove from Favorites" : "Love")
                     if let saved, saved.isResumable {
                         Button("Play from Beginning") { player.play([movie], fromBeginning: true, showVideo: true) }
                             .controlSize(.large)
