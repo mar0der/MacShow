@@ -138,7 +138,9 @@ public final class Library {
                 // Playlists keep every copy of a duplicate song, but never adult items.
                 let listed = items.filter { rules.kind(for: $0.path).map { $0 == .personal } ?? true }
                 let byID = Dictionary(uniqueKeysWithValues: listed.compactMap { item in item.id.map { ($0, item) } })
-                return (LibraryIndex(items: items, rules: rules, showingAdult: showingAdult), try LibraryDatabase.playlistContents(db, items: byID), edits)
+                let chosenKinds = Set(edits.values.filter { $0.kind != nil }.map(\.path))
+                return (LibraryIndex(items: items, rules: rules, showingAdult: showingAdult, chosenKinds: chosenKinds),
+                        try LibraryDatabase.playlistContents(db, items: byID), edits)
             }
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -371,6 +373,15 @@ public final class Library {
         }
     }
 
+    /// Moves items to a category (nil: back to where MacShow would put them).
+    public func setCategory(_ kind: MediaItem.Kind?, for items: [MediaItem]) {
+        save(items.map { item in
+            var edit = edits[item.path] ?? ItemEdit(path: item.path)
+            edit.kind = kind
+            return edit
+        })
+    }
+
     /// Saves Get Info changes (an edit that changes nothing is removed).
     public func save(_ edits: [ItemEdit]) {
         try? database.save(edits)
@@ -435,7 +446,7 @@ public final class Library {
     public var continueWatching: [MediaItem] {
         var result: [(item: MediaItem, date: Date)] = []
         for position in positions.values {
-            guard let item = index.itemsByID[position.mediaItemId], item.kind == .movie || item.kind == .episode else { continue }
+            guard let item = index.itemsByID[position.mediaItemId], item.isVideo, item.kind != .musicVideo else { continue }
             if position.isResumable {
                 result.append((item, position.updatedAt))
             } else if position.isFinished, item.kind == .episode, let next = item.id.flatMap({ index.nextEpisode[$0] }),

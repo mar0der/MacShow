@@ -21,7 +21,7 @@ struct InfoView: View {
 
     var body: some View {
         let items = items
-        let isVideo = items.contains { $0.kind == .movie || $0.kind == .episode }
+        let isVideo = items.contains(where: \.isVideo)
         Form {
             HStack(alignment: .top, spacing: 16) {
                 ArtworkView(key: artworkKey ?? items.first?.artworkKey, title: items.first?.album ?? items.first?.title ?? "", cornerRadius: 8)

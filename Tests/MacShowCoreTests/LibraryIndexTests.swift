@@ -221,3 +221,38 @@ struct ArtistCreditTests {
         #expect(!bigSean.isFeaturedOnly && bigSean.appearances.count == 1)
     }
 }
+
+struct CategoryTests {
+    func video(_ path: String, title: String? = nil, minutes: Double = 120, id: Int64) -> MediaItem {
+        var item = makeItem(path, kind: .movie, title: title)
+        item.duration = minutes * 60
+        item.id = id
+        return item
+    }
+
+    @Test func videosSortThemselvesIntoCategories() {
+        let index = LibraryIndex(items: [
+            video("/Movies/Iron Man.mkv", id: 1),
+            video("/Movies/clip.mov", minutes: 3, id: 2),
+            video("/Movies/Music Videos/a.mp4", title: "a.mp4", minutes: 4, id: 3),
+            video("/Downloads/x.mp4", title: "Eminem - Houdini (Official Music Video)", minutes: 4, id: 4),
+        ])
+        #expect(index.movies.map(\.id) == [1])
+        #expect(index.homeVideos.map(\.id) == [2])
+        #expect(Set(index.musicVideos.map(\.id)) == [3, 4])
+        let houdini = index.musicVideos.first { $0.id == 4 }
+        #expect(houdini?.title == "Houdini" && houdini?.artist == "Eminem")
+        // Music videos are songs too.
+        #expect(Set(index.songs.compactMap(\.id)) == [3, 4])
+    }
+
+    @Test func yourChoiceOfCategoryWins() {
+        var short = video("/Movies/Short Film.mkv", minutes: 12, id: 1)
+        short.kind = .movie
+        var concert = video("/Movies/Concert.mkv", id: 2)
+        concert.kind = .musicVideo
+        let index = LibraryIndex(items: [short, concert], chosenKinds: [short.path, concert.path])
+        #expect(index.movies.map(\.id) == [1])
+        #expect(index.musicVideos.map(\.id) == [2])
+    }
+}

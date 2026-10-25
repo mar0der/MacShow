@@ -18,6 +18,8 @@ public struct ItemEdit: Codable, Hashable, Sendable, FetchableRecord, Persistabl
     public var season: Int?
     public var episode: Int?
     public var artworkKey: String?
+    /// The category you moved it to (Movies, Home Videos, Music Videos…).
+    public var kind: MediaItem.Kind?
 
     public init(path: String) {
         self.path = path
@@ -37,6 +39,7 @@ public struct ItemEdit: Codable, Hashable, Sendable, FetchableRecord, Persistabl
         item.season = season ?? item.season
         item.episode = episode ?? item.episode
         item.artworkKey = artworkKey ?? item.artworkKey
+        item.kind = kind ?? item.kind
         return item
     }
 }
@@ -78,6 +81,9 @@ extension LibraryDatabase {
                 t.column("episode", .integer)
                 t.column("artworkKey", .text)
             }
+        }
+        migrator.registerMigration("v10-item-edit-kind") { db in
+            try db.alter(table: "itemEdit") { t in t.add(column: "kind", .text) }
         }
     }
 }

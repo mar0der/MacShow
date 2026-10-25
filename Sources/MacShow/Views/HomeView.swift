@@ -99,6 +99,7 @@ struct JumpBackInCard: View {
         switch item.kind {
         case .episode: "Episode"
         case .audiobook: "Audiobook"
+        case .homeVideo: "Home Video"
         default: "Movie"
         }
     }

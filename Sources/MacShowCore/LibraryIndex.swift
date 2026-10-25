@@ -55,6 +55,9 @@ public struct LibraryIndex: Sendable {
     /// Videos in folders marked Personal, plus other videos shorter than 20
     /// minutes that aren't TV episodes: clips, recordings, phone videos.
     public var homeVideos: [MediaItem] = []
+    /// Videos in a "Music Videos" folder, named like "(Official Video)", or moved
+    /// there. They're also in `songs`, where they play without the picture.
+    public var musicVideos: [MediaItem] = []
     /// Items in folders marked Adult, when they're shown at all. They appear
     /// nowhere else: not in Home, search, `itemsByID` or any other list.
     public var adult: [MediaItem] = []
@@ -77,24 +80,29 @@ public struct LibraryIndex: Sendable {
     public var nextEpisode: [Int64: MediaItem] = [:]
 
     public var isEmpty: Bool {
-        songs.isEmpty && movies.isEmpty && homeVideos.isEmpty && shows.isEmpty && books.isEmpty
+        songs.isEmpty && movies.isEmpty && homeVideos.isEmpty && musicVideos.isEmpty && shows.isEmpty && books.isEmpty
     }
 
     /// Groups `items`, applying `rules`. Adult items are left out entirely
     /// unless `showingAdult`, and then only listed in `adult`.
-    public init(items allItems: [MediaItem], rules: FolderRules = FolderRules(), showingAdult: Bool = false) {
-        var items: [MediaItem] = [], personal: Set<String> = []
-        for item in allItems {
-            switch rules.kind(for: item.path) {
+    /// Groups `items`, applying `rules`. Adult items are left out entirely
+    /// unless `showingAdult`, and then only listed in `adult`. Items in
+    /// `chosenKinds` (moved to a category by you) keep their kind as it is.
+    public init(items allItems: [MediaItem], rules: FolderRules = FolderRules(), showingAdult: Bool = false,
+                chosenKinds: Set<String> = []) {
+        var items: [MediaItem] = []
+        for var item in allItems {
+            let rule = rules.kind(for: item.path)
+            if !chosenKinds.contains(item.path) {
+                item.kind = Self.category(of: item, inPersonalFolder: rule == .personal)
+            }
+            switch rule {
             case .excluded: continue
             case .adult: if showingAdult { adult.append(item) }
-            case .personal:
-                if item.kind == .movie || item.kind == .episode { personal.insert(item.path) } else { items.append(item) }
-            case nil: items.append(item)
+            case .personal, nil: items.append(item)
             }
         }
         adult.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        let personalVideos = allItems.filter { personal.contains($0.path) }
         let byKind = Dictionary(grouping: items, by: \.kind)
         let (music, duplicateGroups) = Self.removingDuplicates(byKind[.music] ?? [])
         duplicates = duplicateGroups
@@ -102,7 +110,9 @@ public struct LibraryIndex: Sendable {
             if let id = group[0].id { copies[id] = group }
         }
 
-        songs = music.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        musicVideos = (byKind[.musicVideo] ?? []).map(Self.musicVideoDetails)
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        songs = (music + musicVideos).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         songSearchKeys = songs.map { [$0.title, $0.artist, $0.album].compactMap { $0 }.joined(separator: " ").lowercased() }
         // A folder whose tracks disagree on album artist (a compilation where only
         // some tracks are tagged) stays one album, grouped by folder.
@@ -156,10 +166,8 @@ public struct LibraryIndex: Sendable {
             }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
-        let videos = (byKind[.movie] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        movies = videos.filter { $0.duration >= Self.homeVideoMaxDuration }
-        homeVideos = (videos.filter { $0.duration < Self.homeVideoMaxDuration } + personalVideos)
-            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        movies = (byKind[.movie] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        homeVideos = (byKind[.homeVideo] ?? []).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         shows = Dictionary(grouping: byKind[.episode] ?? []) { ($0.show ?? "Unknown Show").lowercased() }
             .map { key, episodes in
                 let sorted = episodes.sorted { ($0.season ?? 0, $0.episode ?? 0) < ($1.season ?? 0, $1.episode ?? 0) }
@@ -184,12 +192,38 @@ public struct LibraryIndex: Sendable {
                 if let id = episode.id { nextEpisode[id] = next }
             }
         }
-        items += personalVideos
         recentlyAdded = Array(items.sorted { $0.addedAt > $1.addedAt }.prefix(20))
         itemsByID = Dictionary(uniqueKeysWithValues: items.compactMap { item in item.id.map { ($0, item) } })
     }
 
     static let homeVideoMaxDuration: Double = 20 * 60
+
+    /// Where a video goes when you haven't chosen: music videos by folder or
+    /// name, Personal folders and short clips to Home Videos, the rest stays.
+    static func category(of item: MediaItem, inPersonalFolder: Bool) -> MediaItem.Kind {
+        guard item.kind == .movie || item.kind == .episode else { return item.kind }
+        let path = item.path.lowercased()
+        if path.contains("/music videos/") || path.contains("/musicvideos/")
+            || item.title.range(of: #"\b(official\s+(music\s+)?video|music\s+video)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            return .musicVideo
+        }
+        if inPersonalFolder { return .homeVideo }
+        if item.kind == .movie, item.duration < homeVideoMaxDuration { return .homeVideo }
+        return item.kind
+    }
+
+    /// "Artist - Song (Official Music Video)" without tags → artist "Artist", title "Song".
+    static func musicVideoDetails(_ item: MediaItem) -> MediaItem {
+        var item = item
+        var title = item.title.replacingOccurrences(of: #"\s*[(\[][^)\]]*\b(video|official|lyrics?|audio|visuali[sz]er|4k|hd)\b[^)\]]*[)\]]"#,
+                                                    with: "", options: [.regularExpression, .caseInsensitive])
+        if item.artist == nil, let dash = title.range(of: " - ") {
+            item.artist = String(title[..<dash.lowerBound]).trimmingCharacters(in: .whitespaces)
+            title = String(title[dash.upperBound...])
+        }
+        item.title = title.trimmingCharacters(in: .whitespaces).isEmpty ? item.title : title.trimmingCharacters(in: .whitespaces)
+        return item
+    }
 
     /// Groups copies of the same song and keeps the best one of each. Only
     /// songs tagged with an artist and an album are compared (untagged rips named
