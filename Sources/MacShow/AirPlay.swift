@@ -11,9 +11,10 @@ import SwiftUI
 /// same spot when AirPlay stops.
 @MainActor
 @Observable
-final class AirPlay {
+final class AirPlay: Cast {
     /// The video is playing on an AirPlay device.
     private(set) var isActive = false
+    let deviceName = "AirPlay"
     /// "Direct", or what's being converted, for the file on the TV.
     private(set) var summary = ""
     /// The file has picture subtitles (PGS, VobSub), which the TV doesn't get.
@@ -141,6 +142,7 @@ final class AirPlay {
         guard !isSwitching else { return }
         let external = avPlayer.isExternalPlaybackActive && avPlayer.currentItem != nil
         if external, !isActive, let player {
+            player.activeCast?.stop(resume: false)  // off the DLNA TV
             isActive = true
             let wasPaused = player.isPaused
             player.castDidStart()

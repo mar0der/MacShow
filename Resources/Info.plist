@@ -144,7 +144,7 @@
 		</dict>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>MacShow looks for file servers in your home (a NAS, or Macs and PCs sharing folders) so you can add their media, and sends videos to your Apple TV when you use AirPlay.</string>
+	<string>MacShow looks for file servers in your home (a NAS, or Macs and PCs sharing folders) so you can add their media, and sends videos to your Apple TV (AirPlay) or smart TV (DLNA) when you cast to them.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_smb._tcp</string>

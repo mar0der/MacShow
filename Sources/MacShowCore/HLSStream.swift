@@ -39,6 +39,9 @@ public final class HLSStream: @unchecked Sendable {
 
     public let plan: CastPlan
     public let duration: Double
+    /// FFmpeg's name for the container ("matroska,webm") and the audio codec ("eac3").
+    public let container: String
+    public let audioCodec: String?
     public let subtitles: [Subtitle]
     /// Picture subtitles (PGS, VobSub) the file has, which aren't sent.
     public let hasPictureSubtitles: Bool
@@ -121,6 +124,8 @@ public final class HLSStream: @unchecked Sendable {
             video: CastPlan.video(codec: codecName(video), profile: Int(parameters.pointee.profile)),
             audio: audio.map { CastPlan.audio(codec: codecName($0)) }
         )
+        container = String(cString: context.pointee.iformat.pointee.name)
+        audioCodec = audio.map(codecName)
         origin = context.pointee.start_time == Self.noTimestamp ? 0 : context.pointee.start_time
         duration = Double(max(context.pointee.duration, 0)) / Double(AV_TIME_BASE)
 
