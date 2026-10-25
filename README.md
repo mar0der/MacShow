@@ -5,6 +5,15 @@ one place. It plays almost any format (FLAC, ALAC, MP3, Opus, MKV, HEVC, AV1,
 M4B…) through [mpv](https://mpv.io), finds your files on its own, and never
 asks you to prove you bought them. If a file isn't copy-protected, it plays.
 
+**[Download the latest release](https://github.com/mar0der/MacShow/releases/latest)** (macOS 14 or later, Apple silicon and Intel).
+
+![A movie's page: poster art, rating, summary and cast](docs/screenshots/movie.png)
+
+| | |
+|---|---|
+| ![A TV show with its seasons and episodes](docs/screenshots/show.png) | ![An album playing](docs/screenshots/album.png) |
+| ![Artists, with photos](docs/screenshots/artists.png) | ![An artist's page with bio and albums](docs/screenshots/artist.png) |
+
 ## What it does
 
 - **Library that builds itself.** Watches `~/Music` (including the Music app's
