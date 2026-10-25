@@ -90,7 +90,8 @@ struct RootView: View {
                 VideoPlayerView()
             } else {
                 browser.overlay(alignment: .bottomTrailing) {
-                    if player.isVideo { FloatingVideo().padding(24) }
+                    // In Picture in Picture the video is in its own floating window instead.
+                    if player.isVideo, !PictureInPicture.shared.isActive { FloatingVideo().padding(24) }
                 }
             }
         }

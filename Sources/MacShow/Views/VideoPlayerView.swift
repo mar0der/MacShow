@@ -108,6 +108,7 @@ private struct VideoContextMenu: View {
         }
         Divider()
         Button(VideoScreen.isFullScreen ? "Exit Full Screen" : "Enter Full Screen") { VideoScreen.toggleFullScreen() }
+        Button("Picture in Picture") { PictureInPicture.shared.open(player, library: library) }
         Button("Back to Library") { player.isVideoMinimized = true }
         if let item = player.currentItem {
             Divider()
@@ -223,6 +224,10 @@ struct VideoPlayerView: View {
                                 .help("AirPlay")
                             DLNAMenu()
                             TracksMenu()
+                            Button { PictureInPicture.shared.open(player, library: library) } label: {
+                                Label("Picture in Picture", systemImage: "pip.enter").labelStyle(.iconOnly)
+                            }
+                            .help("Picture in Picture (⌥⌘P)")
                             Button { VideoScreen.toggleFullScreen() } label: {
                                 Image(systemName: "arrow.up.left.and.arrow.down.right")
                             }
@@ -417,6 +422,7 @@ private struct UpNextCard: View {
 /// The video in a corner of the library while you browse. Click to bring it back.
 struct FloatingVideo: View {
     @Environment(Player.self) private var player
+    @Environment(Library.self) private var library
     @State private var hovering = false
 
     var body: some View {
@@ -439,6 +445,10 @@ struct FloatingVideo: View {
                         HStack {
                             Button { player.isVideoMinimized = false } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
                                 .help("Back to Full Size")
+                            Button { PictureInPicture.shared.open(player, library: library) } label: {
+                                Label("Picture in Picture", systemImage: "pip.enter").labelStyle(.iconOnly)
+                            }
+                            .help("Float Above Other Apps")
                             Spacer()
                             Button { player.stop() } label: { Image(systemName: "xmark") }
                                 .help("Stop and Close")

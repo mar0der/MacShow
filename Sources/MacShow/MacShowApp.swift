@@ -84,6 +84,11 @@ struct MacShowApp: App {
                 Button("Full Screen Video") { VideoScreen.toggleFullScreen() }
                     .keyboardShortcut("f", modifiers: [.command, .control])
                     .disabled(!player.isVideo)
+                Button(PictureInPicture.shared.isActive ? "Exit Picture in Picture" : "Picture in Picture") {
+                    PictureInPicture.shared.toggle(player, library: library)
+                }
+                .keyboardShortcut("p", modifiers: [.command, .option])
+                .disabled(!player.isVideo)
                 Button("Close Video") { player.stop() }
                     .keyboardShortcut("w", modifiers: [.command, .shift])
                     .disabled(!player.isVideo)
