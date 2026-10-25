@@ -54,6 +54,7 @@ struct MacShowApp: App {
                     }
                 }
                 .keyboardShortcut("o")
+                Button("Import Playlists…") { importPlaylists(into: library) }
             }
             CommandMenu("Controls") {
                 // Space itself is handled by VideoScreen, so it works whatever has focus.

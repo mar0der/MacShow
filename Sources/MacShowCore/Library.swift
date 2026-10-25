@@ -509,6 +509,33 @@ public final class Library {
     }
 
     public func add(_ items: [MediaItem], to playlist: Playlist) { try? database.add(items, to: playlist) }
+
+    /// Creates playlists from the Music app's exported Library.xml, or one from
+    /// an M3U file. Songs not in this library are skipped, and so are playlists
+    /// left with none.
+    public func importPlaylists(from url: URL) throws -> (playlists: Int, songs: Int, missing: Int) {
+        let data = try Data(contentsOf: url)
+        let lists: [(name: String, paths: [String])]
+        if ["m3u", "m3u8"].contains(url.pathExtension.lowercased()) {
+            let text = String(decoding: data, as: UTF8.self)
+            lists = [(url.deletingPathExtension().lastPathComponent, PlaylistFile.m3uPaths(text, relativeTo: url.deletingLastPathComponent()))]
+        } else {
+            lists = try PlaylistFile.musicLibraryPlaylists(data)
+        }
+        let rules = FolderRules(folderRules)
+        let byPath = Dictionary(((try? database.allItems()) ?? []).filter { rules.kind(for: $0.path) != .adult }.map { ($0.path, $0) },
+                                uniquingKeysWith: { first, _ in first })
+        var result = (playlists: 0, songs: 0, missing: 0)
+        for list in lists {
+            let items = list.paths.compactMap { byPath[$0] ?? byPath[URL(fileURLWithPath: $0).canonicalPath] }
+            result.missing += list.paths.count - items.count
+            guard !items.isEmpty else { continue }
+            createPlaylist(named: list.name, with: items)
+            result.playlists += 1
+            result.songs += items.count
+        }
+        return result
+    }
     public func rename(_ playlist: Playlist, to name: String) { try? database.renamePlaylist(playlist, to: name) }
     public func delete(_ playlist: Playlist) { try? database.deletePlaylist(playlist) }
     public func removeEntries(positions: [Int], from playlist: Playlist) { try? database.removeEntries(positions: positions, from: playlist) }

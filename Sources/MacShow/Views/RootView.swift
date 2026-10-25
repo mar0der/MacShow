@@ -133,6 +133,8 @@ struct RootView: View {
                             .tag(SidebarItem.playlist(id))
                             .contextMenu {
                                 Button("Play") { player.play(contents.items) }
+                                Button("Export as M3U…") { exportPlaylist(contents) }
+                                Divider()
                                 Button("Delete Playlist", role: .destructive) { library.delete(contents.playlist) }
                             }
                     }

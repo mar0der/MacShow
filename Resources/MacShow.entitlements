@@ -11,8 +11,9 @@
 	<true/>
 	<key>com.apple.security.files.downloads.read-only</key>
 	<true/>
-	<!-- Other folders: picked once in an Open panel, remembered with a bookmark. -->
-	<key>com.apple.security.files.user-selected.read-only</key>
+	<!-- Other folders: picked once in an Open panel, remembered with a (read-only)
+	     bookmark. Read-write so a playlist can be exported where you choose. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
