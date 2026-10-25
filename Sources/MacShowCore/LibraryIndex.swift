@@ -251,3 +251,23 @@ public struct LibraryIndex: Sendable {
         return a.url.lastPathComponent.localizedStandardCompare(b.url.lastPathComponent) == .orderedAscending
     }
 }
+
+extension Book {
+    /// Books grouped by author, authors A–Z (books without one last), each
+    /// author's books by title.
+    public static func byAuthor(_ books: [Book]) -> [(author: String?, books: [Book])] {
+        Dictionary(grouping: books) { $0.author?.trimmingCharacters(in: .whitespaces).nilIfEmpty }
+            .map { ($0.key, $0.value.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }) }
+            .sorted { first, second in
+                switch (first.0, second.0) {
+                case let (a?, b?): a.localizedStandardCompare(b) == .orderedAscending
+                case (nil, _): false
+                case (_, nil): true
+                }
+            }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}

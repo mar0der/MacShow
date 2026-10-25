@@ -2,7 +2,13 @@ import MacShowCore
 import SwiftUI
 
 struct BooksView: View {
+    enum Order: String, CaseIterable {
+        case title = "Title", author = "Author", recent = "Recently Played"
+    }
+
     @Environment(Library.self) private var library
+    @AppStorage("bookOrder") private var order: Order = .title
+    private let grid = [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 24)]
 
     var body: some View {
         let books = library.index.books
@@ -11,14 +17,43 @@ struct BooksView: View {
                 EmptyLibraryView(title: "No Audiobooks", icon: "book")
             } else {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 24)], spacing: 28) {
-                        ForEach(books) { BookTile(book: $0) }
+                    if order == .author {
+                        LazyVStack(alignment: .leading, spacing: 32) {
+                            ForEach(Book.byAuthor(books), id: \.author) { group in
+                                VStack(alignment: .leading, spacing: 14) {
+                                    Text(group.author ?? "Unknown Author").font(.title3.weight(.semibold))
+                                    LazyVGrid(columns: grid, spacing: 28) {
+                                        ForEach(group.books) { BookTile(book: $0) }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(28)
+                    } else {
+                        LazyVGrid(columns: grid, spacing: 28) {
+                            ForEach(order == .recent ? recentFirst(books) : books) { BookTile(book: $0) }
+                        }
+                        .padding(28)
                     }
-                    .padding(28)
                 }
             }
         }
         .navigationTitle("Audiobooks")
+        .toolbar {
+            if !books.isEmpty {
+                Picker("Sort By", selection: $order) {
+                    ForEach(Order.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .help("Sort audiobooks")
+            }
+        }
+    }
+
+    /// Most recently listened first; books not started after, by title.
+    private func recentFirst(_ books: [Book]) -> [Book] {
+        let played = books.map { ($0, library.progress(of: $0).lastListened) }
+        return played.filter { $0.1 != nil }.sorted { $0.1! > $1.1! }.map(\.0) + played.filter { $0.1 == nil }.map(\.0)
     }
 }
 
