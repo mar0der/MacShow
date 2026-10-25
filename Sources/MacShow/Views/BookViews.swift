@@ -102,6 +102,7 @@ struct BookDetailView: View {
     @Environment(Player.self) private var player
     @State private var fileChapters: [FileMetadata.Chapter] = []
     @State private var showsBookmarks = false
+    @State private var info: MediaDetails?
 
     private static let speeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
     private static let sleepMinutes = [5, 10, 15, 30, 45, 60]
@@ -142,6 +143,7 @@ struct BookDetailView: View {
         .padding(.horizontal, 40)
         .padding(.top, 32)
         .navigationTitle(book.title)
+        .task(id: book.id) { info = await library.details(of: book) }
         .task(id: book.id) {
             guard book.parts.count == 1, let url = book.parts.first?.url else { return }
             fileChapters = await Task.detached { MetadataReader.read(url)?.chapters ?? [] }.value
@@ -167,6 +169,10 @@ struct BookDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(book.title).font(.title.weight(.bold)).lineLimit(2)
                 if let author = book.author { Text(author).font(.title3).foregroundStyle(.secondary) }
+                if let year = info?.year { Text(String(year)).font(.callout).foregroundStyle(.secondary) }
+            }
+            if let description = info?.overview {
+                Text(description).font(.callout).lineLimit(6).help(description)
             }
             HStack(spacing: 8) {
                 if let badge = book.parts.first.map({ $0.url.pathExtension.uppercased() }) { FormatBadge(text: badge) }

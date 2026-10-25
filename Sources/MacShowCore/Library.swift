@@ -482,6 +482,37 @@ public final class Library {
         return found
     }
 
+    /// Settings key: look up artist bios (Wikipedia) and book details (Open Library), default on.
+    nonisolated public static let fetchInfoKey = "fetchArtistAndBookInfo"
+
+    /// The opening of the artist's Wikipedia article. Looked up once, then kept.
+    public func bio(of artist: Artist) async -> MediaDetails? {
+        await cachedOrFetched("artist:" + artist.id) { await ArtworkFetcher().artistBio(artist.name) }
+    }
+
+    /// A book's description, year and cover. A book without a cover gets this
+    /// one (you can change it in Get Info).
+    public func details(of book: Book) async -> MediaDetails? {
+        let details = await cachedOrFetched("book:" + book.id) { await ArtworkFetcher().bookDetails(title: book.title, author: book.author) }
+        if book.artworkKey == nil, let poster = details?.poster,
+           let (data, _) = try? await URLSession(configuration: .ephemeral).data(from: poster), let key = artwork.store(data) {
+            save(book.parts.map { part in
+                var edit = edits[part.path] ?? ItemEdit(path: part.path)
+                edit.artworkKey = key
+                return edit
+            })
+        }
+        return details
+    }
+
+    private func cachedOrFetched(_ key: String, fetch: () async -> MediaDetails?) async -> MediaDetails? {
+        let database = database
+        if let cached = try? database.cachedDetails(key) { return cached }
+        guard UserDefaults.standard.object(forKey: Self.fetchInfoKey) as? Bool ?? true, let found = await fetch() else { return nil }
+        try? database.cacheDetails(found, key: key)
+        return found
+    }
+
     // MARK: Artist pictures
 
     /// Photos found or chosen for artists, by artist id.
