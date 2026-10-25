@@ -16,8 +16,14 @@ public struct Artist: Identifiable, Hashable, Sendable {
     public var name: String
     /// Albums credited to this artist, newest first.
     public var albums: [Album]
-    /// Every song by this artist, including ones on compilations.
+    /// Songs this artist leads, including duets ("Eminem & Jelly Roll") and
+    /// ones on compilations.
     public var songs: [MediaItem]
+    /// Songs led by someone else that this artist is featured on.
+    public var appearances: [MediaItem] = []
+    /// For an artist who is only ever featured: who they appear with most.
+    public var appearsWith: String?
+    public var isFeaturedOnly: Bool { albums.isEmpty && songs.isEmpty }
     public var artworkKey: String? { albums.lazy.compactMap(\.artworkKey).first ?? songs.lazy.compactMap(\.artworkKey).first }
 }
 
@@ -113,15 +119,40 @@ public struct LibraryIndex: Sendable {
                 )
             }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        let albumsByArtist = Dictionary(grouping: albums) { $0.artist.lowercased() }
-        let songsByArtist = Dictionary(grouping: music.filter { $0.artist != nil }) { $0.artist!.lowercased() }
-        artists = Set(albumsByArtist.keys).union(songsByArtist.keys)
+        // Each song goes to its main artist; the others credited on it are featured.
+        let soloArtists = Set(music.flatMap { [$0.artist, $0.albumArtist] }.compactMap { $0?.lowercased() })
+        var spellings: [String: [String]] = [:]
+        var songsByArtist: [String: [MediaItem]] = [:], appearancesByArtist: [String: [MediaItem]] = [:]
+        var leadsOfAppearances: [String: [String]] = [:]
+        for song in music {
+            guard let tag = song.artist else { continue }
+            var names = Self.credits(tag, soloArtists: soloArtists)
+            if let albumArtist = song.albumArtist, albumArtist.lowercased() != "various artists",
+               let lead = Self.credits(albumArtist, soloArtists: soloArtists).first {
+                names = [lead] + names.filter { $0.lowercased() != lead.lowercased() }
+            }
+            for guest in Self.featuredInTitle(song.title) where !names.contains(where: { $0.lowercased() == guest.lowercased() }) {
+                names.append(guest)
+            }
+            for name in names { spellings[name.lowercased(), default: []].append(name) }
+            songsByArtist[names[0].lowercased(), default: []].append(song)
+            for name in names.dropFirst() {
+                appearancesByArtist[name.lowercased(), default: []].append(song)
+                leadsOfAppearances[name.lowercased(), default: []].append(names[0])
+            }
+        }
+        let albumsByArtist = Dictionary(grouping: albums) { album in
+            (Self.credits(album.artist, soloArtists: soloArtists).first ?? album.artist).lowercased()
+        }
+        artists = Set(albumsByArtist.keys).union(songsByArtist.keys).union(appearancesByArtist.keys)
             .subtracting(["various artists"])
             .map { key in
-                let songs = (songsByArtist[key] ?? []).sorted(by: Self.trackOrder)
                 let albums = (albumsByArtist[key] ?? []).sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-                let name = Self.mostCommon(songs.compactMap(\.artist)) ?? albums[0].artist
-                return Artist(id: key, name: name, albums: albums, songs: songs)
+                var artist = Artist(id: key, name: Self.mostCommon(spellings[key] ?? []) ?? albums[0].artist, albums: albums,
+                                    songs: (songsByArtist[key] ?? []).sorted(by: Self.trackOrder))
+                artist.appearances = (appearancesByArtist[key] ?? []).sorted(by: Self.trackOrder)
+                if artist.isFeaturedOnly { artist.appearsWith = Self.mostCommon(leadsOfAppearances[key] ?? []) }
+                return artist
             }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
@@ -225,6 +256,37 @@ public struct LibraryIndex: Sendable {
         let artists = Set(tracks.compactMap { $0.artist?.lowercased() })
         if artists.count > 1 { return "Various Artists" }
         return mostCommon(tracks.compactMap(\.artist)) ?? "Unknown Artist"
+    }
+
+    /// The names credited in an artist tag, main artist first:
+    /// "Eminem feat. Big Sean" and "Eminem, Big Sean & Babytron" give each name.
+    /// A name joined with "&" or "," only splits when its first part is an artist
+    /// on its own in the library, so "Emerson, Lake & Palmer" stays one band;
+    /// "feat." and "ft." always split.
+    static func credits(_ tag: String, soloArtists: Set<String>) -> [String] {
+        func parts(_ text: String) -> [String] {
+            text.components(separatedBy: ", ").flatMap { $0.components(separatedBy: " & ") }
+                .map { $0.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "()[]"))) }
+                .filter { !$0.isEmpty }
+        }
+        var lead = tag, featured: [String] = []
+        if let feat = tag.range(of: #"\s*[(\[]?\b(feat\.?|ft\.|featuring)\s+"#, options: [.regularExpression, .caseInsensitive]) {
+            lead = String(tag[..<feat.lowerBound])
+            featured = parts(String(tag[feat.upperBound...]))
+        }
+        var leads = parts(lead)
+        if leads.count > 1, !soloArtists.contains(leads[0].lowercased()) {
+            leads = [lead.trimmingCharacters(in: .whitespaces)]
+        }
+        var seen = Set<String>()
+        let names = (leads + featured).filter { seen.insert($0.lowercased()).inserted }
+        return names.isEmpty ? [tag] : names
+    }
+
+    /// Guests named in a title: "Lucky You (feat. Joyner Lucas)" → ["Joyner Lucas"].
+    static func featuredInTitle(_ title: String) -> [String] {
+        guard let match = title.range(of: #"[(\[](feat\.?|ft\.|featuring)\s+[^)\]]+[)\]]"#, options: [.regularExpression, .caseInsensitive]) else { return [] }
+        return Array(credits("x " + title[match], soloArtists: []).dropFirst())
     }
 
     static func folderName(_ item: MediaItem) -> String {

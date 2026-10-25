@@ -177,3 +177,47 @@ struct ItemEditTests {
         #expect(try database.itemEdits().isEmpty)
     }
 }
+
+struct ArtistCreditTests {
+    let solo: Set<String> = ["eminem", "big sean"]
+
+    @Test func splitsDuetsLedByAKnownArtist() {
+        #expect(LibraryIndex.credits("Eminem & Jelly Roll", soloArtists: solo) == ["Eminem", "Jelly Roll"])
+        #expect(LibraryIndex.credits("Eminem, Big Sean & Babytron", soloArtists: solo) == ["Eminem", "Big Sean", "Babytron"])
+    }
+
+    @Test func featAlwaysSplits() {
+        #expect(LibraryIndex.credits("Joyner Lucas feat. Eminem", soloArtists: []) == ["Joyner Lucas", "Eminem"])
+        #expect(LibraryIndex.credits("Eminem (ft. Royce da 5'9\" & JID)", soloArtists: solo) == ["Eminem", "Royce da 5'9\"", "JID"])
+    }
+
+    @Test func guestsInTitles() {
+        #expect(LibraryIndex.featuredInTitle("Lucky You (feat. Joyner Lucas)") == ["Joyner Lucas"])
+        #expect(LibraryIndex.featuredInTitle("Not Alike [ft. Royce da 5'9\"]") == ["Royce da 5'9\""])
+        #expect(LibraryIndex.featuredInTitle("Featuring Nobody") == [])
+    }
+
+    @Test func bandNamesStayWhole() {
+        #expect(LibraryIndex.credits("Emerson, Lake & Palmer", soloArtists: solo) == ["Emerson, Lake & Palmer"])
+        #expect(LibraryIndex.credits("Simon & Garfunkel", soloArtists: solo) == ["Simon & Garfunkel"])
+        #expect(LibraryIndex.credits("Earth, Wind & Fire feat. The Emotions", soloArtists: solo) == ["Earth, Wind & Fire", "The Emotions"])
+    }
+
+    @Test func duetsGoToTheMainArtistAndFeaturedArtistsGetAppearances() {
+        var album = [
+            makeItem("/m/sd/1.m4a", artist: "Eminem", album: "The Death of Slim Shady"),
+            makeItem("/m/sd/2.m4a", artist: "Eminem & Jelly Roll", album: "The Death of Slim Shady"),
+            makeItem("/m/sd/3.m4a", artist: "Eminem, Big Sean & Babytron", album: "The Death of Slim Shady"),
+        ]
+        for index in album.indices { album[index].albumArtist = "Eminem" }
+        let index = LibraryIndex(items: album + [makeItem("/m/bs/1.m4a", artist: "Big Sean", album: "Detroit")])
+
+        #expect(index.artists.map(\.name) == ["Babytron", "Big Sean", "Eminem", "Jelly Roll"])
+        let eminem = try! #require(index.artists.first { $0.name == "Eminem" })
+        #expect(eminem.songs.count == 3 && eminem.albums.count == 1)
+        let jelly = try! #require(index.artists.first { $0.name == "Jelly Roll" })
+        #expect(jelly.isFeaturedOnly && jelly.appearances.count == 1 && jelly.appearsWith == "Eminem")
+        let bigSean = try! #require(index.artists.first { $0.name == "Big Sean" })
+        #expect(!bigSean.isFeaturedOnly && bigSean.appearances.count == 1)
+    }
+}
