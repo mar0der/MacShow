@@ -207,10 +207,11 @@ struct MovieTile: View {
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
 
-    /// Movies and documentaries open their page; other videos just play.
+    /// Movies and documentaries open their page; other videos just play, and so
+    /// do Adult ones (kept out of `itemsByID`, which pages look items up in).
     var body: some View {
         Group {
-            if movie.kind == .movie || movie.kind == .documentary, let id = movie.id {
+            if movie.kind == .movie || movie.kind == .documentary, let id = movie.id, library.index.itemsByID[id] != nil {
                 NavigationLink(value: MovieRef(id: id)) { label }
             } else {
                 Button { player.play([movie], showVideo: true) } label: { label }
