@@ -174,11 +174,16 @@ final class Player {
     private(set) var isOpening = false
     /// A video being opened: its screen shows straight away, with a spinner, not
     /// only once mpv has the file open (seconds, on a slow network share).
-    var isOpeningVideo: Bool { isOpening && !isVideo && currentItem.map { $0.isVideo && $0.kind != .musicVideo } == true }
+    var isOpeningVideo: Bool {
+        isOpening && !isVideo && (liveChannel != nil || currentItem.map { $0.isVideo && $0.kind != .musicVideo } == true)
+    }
     /// The video keeps playing in a corner while you browse the library.
     /// Starting something new brings it back full size.
     var isVideoMinimized = false
-    var hasMedia: Bool { duration > 0 || currentItem != nil }
+    var hasMedia: Bool { duration > 0 || currentItem != nil || liveChannel != nil }
+    /// The live TV channel playing, and the channels Next and Previous switch between.
+    private(set) var liveChannel: LiveChannel?
+    @ObservationIgnored private var liveChannels: [LiveChannel] = []
 
     @ObservationIgnored nonisolated(unsafe) private let mpv: OpaquePointer
     @ObservationIgnored nonisolated private let eventQueue = DispatchQueue(label: "MacShow.mpv")
@@ -248,6 +253,7 @@ final class Player {
     /// (played from Music Videos).
     func play(_ items: [MediaItem], startAt index: Int = 0, fromBeginning: Bool = false, at time: Double? = nil, showVideo: Bool = false) {
         guard items.indices.contains(index) else { return }
+        liveChannel = nil
         // Files on a drive that isn't connected: play a reachable copy, or leave them out.
         if let library, items.contains(where: { library.playableCopy(of: $0) != $0 }) {
             let reachable = items.indices.compactMap { offset in library.playableCopy(of: items[offset]).map { (offset, $0) } }
@@ -274,6 +280,28 @@ final class Player {
         audioOnly.replace(with: showVideo ? [] : Set(items.filter { $0.kind == .musicVideo }.map(\.path)))
         command("playlist-play-index", String(index))
         setFlag("pause", false)
+    }
+
+    /// Plays a live TV channel; Next and Previous then go through `channels`.
+    func playLive(_ channel: LiveChannel, in channels: [LiveChannel]) {
+        savePosition()
+        command("stop")
+        isVideoMinimized = false
+        queue = []
+        queueIndex = nil
+        sleepTimer = .off
+        speed = 1
+        liveChannels = channels
+        liveChannel = channel
+        startTimes.replace(with: [:])
+        audioOnly.replace(with: [])
+        command("loadfile", channel.url.absoluteString)
+        setFlag("pause", false)
+    }
+
+    private func zap(_ step: Int) {
+        guard let current = liveChannel, let index = liveChannels.firstIndex(of: current), !liveChannels.isEmpty else { return }
+        playLive(liveChannels[(index + step + liveChannels.count) % liveChannels.count], in: liveChannels)
     }
 
     private func resumePoint(for item: MediaItem) -> Double? {
@@ -471,12 +499,14 @@ final class Player {
     }
 
     func next() {
+        if liveChannel != nil { return zap(1) }
         fileChanging()
         command("playlist-next")
     }
 
     /// Restarts the current track, or goes to the previous one near its start.
     func previous() {
+        if liveChannel != nil { return zap(-1) }
         if position > 3 {
             seek(to: 0)
         } else {
@@ -526,6 +556,7 @@ final class Player {
         activeCast?.stop(resume: false)
         savePosition()
         command("stop")
+        liveChannel = nil
         queue = []
         queueIndex = nil
         duration = 0

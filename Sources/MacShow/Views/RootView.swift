@@ -2,11 +2,11 @@ import MacShowCore
 import SwiftUI
 
 enum SidebarItem: Hashable, RawRepresentable {
-    case home, albums, artists, songs, movies, shows, sports, documentaries, homeVideos, musicVideos, books, adult
+    case home, albums, artists, songs, movies, shows, liveTV, sports, documentaries, homeVideos, musicVideos, books, adult
     case playlist(Int64)
     case smart(SmartList)
 
-    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .sports, .documentaries, .homeVideos, .musicVideos, .books, .adult]
+    static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .liveTV, .sports, .documentaries, .homeVideos, .musicVideos, .books, .adult]
 
     init?(rawValue: String) {
         if rawValue.hasPrefix("playlist:"), let id = Int64(rawValue.dropFirst("playlist:".count)) {
@@ -28,6 +28,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .songs: "songs"
         case .movies: "movies"
         case .shows: "shows"
+        case .liveTV: "liveTV"
         case .sports: "sports"
         case .documentaries: "documentaries"
         case .homeVideos: "homeVideos"
@@ -47,6 +48,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .songs: "Songs"
         case .movies: "Movies"
         case .shows: "TV Shows"
+        case .liveTV: "Live TV"
         case .sports: "Sports"
         case .documentaries: "Documentaries"
         case .homeVideos: "Home Videos"
@@ -66,6 +68,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .songs: "music.note"
         case .movies: "film"
         case .shows: "tv"
+        case .liveTV: "antenna.radiowaves.left.and.right"
         case .sports: "sportscourt"
         case .documentaries: "globe.europe.africa"
         case .homeVideos: "video"
@@ -159,6 +162,7 @@ struct RootView: View {
             Section("Video") {
                 row(.movies)
                 row(.shows)
+                row(.liveTV)
                 row(.sports)
                 row(.documentaries)
                 row(.homeVideos)
@@ -219,6 +223,7 @@ struct RootView: View {
             case .songs: SongsView()
             case .movies: VideoGridView(title: "Movies", emptyTitle: "No Movies", icon: "film", section: "movies", videos: library.index.movies)
             case .shows: ShowsView()
+            case .liveTV: LiveTVView()
             case .sports: SportsView()
             case .documentaries:
                 VideoGridView(title: "Documentaries", emptyTitle: "No Documentaries", icon: "globe.europe.africa", section: "documentaries",

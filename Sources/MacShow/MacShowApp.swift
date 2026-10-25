@@ -8,6 +8,7 @@ struct MacShowApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var library: Library
     @State private var player: Player
+    @State private var liveTV: LiveTV
     @AppStorage("showInMenuBar") private var showInMenuBar = true
 
     init() {
@@ -22,8 +23,13 @@ struct MacShowApp: App {
         player.library = library
         _library = State(initialValue: library)
         _player = State(initialValue: player)
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let liveTV = LiveTV(builtInPlaylist: Bundle.main.url(forResource: "Free Channels", withExtension: "m3u", subdirectory: "LiveTV"),
+                            cacheFolder: support.appendingPathComponent("MacShow/LiveTV"))
+        _liveTV = State(initialValue: liveTV)
+        Task { await liveTV.load() }
         VideoScreen.installKeys(for: player)
-        AgentControl.shared.configure(library: library, player: player)
+        AgentControl.shared.configure(library: library, player: player, liveTV: liveTV)
         AppServices.library = library
         AppServices.player = player
         // At launch, not when a window appears: the app can be opened for a file
@@ -42,6 +48,7 @@ struct MacShowApp: App {
                 }
                 .environment(library)
                 .environment(player)
+                .environment(liveTV)
                 .preferredColorScheme(.dark)
                 .onAppear {
                     // `MacShow <file>` plays that file on launch. Only a media file: the
@@ -148,6 +155,7 @@ struct MacShowApp: App {
             SettingsView()
                 .environment(library)
                 .environment(player)
+                .environment(liveTV)
                 .preferredColorScheme(.dark)
         }
     }

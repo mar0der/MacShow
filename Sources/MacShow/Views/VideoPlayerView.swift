@@ -146,6 +146,9 @@ struct VideoPlayerView: View {
                 CastScreen(cast: cast)
             }
 
+            // Not the last frame of what played before: the new title's own picture.
+            if player.isOpening { LoadingPicture() }
+
             if player.isBuffering || player.isOpening {
                 VStack(spacing: 10) {
                     ProgressView().controlSize(.large)
@@ -174,7 +177,7 @@ struct VideoPlayerView: View {
                     .buttonStyle(.borderless)
                     .help(player.currentItem?.show.map { "Back to \($0), Keep Playing (Esc)" } ?? "Back to Library, Keep Playing (Esc)")
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(player.currentItem?.title ?? player.title).font(.headline)
+                        Text(player.liveChannel?.name ?? player.currentItem?.title ?? player.title).font(.headline)
                         if let item = player.currentItem, item.kind == .episode, let show = item.show {
                             Text("\(show) · S\(item.season ?? 0) E\(item.episode ?? 0)").font(.caption).foregroundStyle(.secondary)
                         }
@@ -197,13 +200,20 @@ struct VideoPlayerView: View {
                 Spacer()
 
                 VStack(spacing: 6) {
-                    HStack(spacing: 12) {
-                        Text(Format.time(player.position)).monospacedDigit()
-                        Slider(value: Binding(get: { player.position }, set: { player.seek(to: $0) }), in: 0...max(player.duration, 1))
-                            .background { BufferedRange(from: player.position, to: player.bufferedUntil, duration: player.duration) }
-                        Text("-" + Format.time(player.duration - player.position)).monospacedDigit()
+                    if player.liveChannel == nil {
+                        HStack(spacing: 12) {
+                            Text(Format.time(player.position)).monospacedDigit()
+                            Slider(value: Binding(get: { player.position }, set: { player.seek(to: $0) }), in: 0...max(player.duration, 1))
+                                .background { BufferedRange(from: player.position, to: player.bufferedUntil, duration: player.duration) }
+                            Text("-" + Format.time(player.duration - player.position)).monospacedDigit()
+                        }
+                        .font(.caption)
+                    } else {
+                        Label("LIVE", systemImage: "dot.radiowaves.left.and.right")
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(.red.opacity(0.85), in: Capsule())
                     }
-                    .font(.caption)
                     HStack {
                         HStack(spacing: 6) {
                             Button { player.isMuted.toggle() } label: {
@@ -216,8 +226,8 @@ struct VideoPlayerView: View {
                         Spacer()
                         HStack(spacing: 18) {
                             Button { player.previous() } label: { Label("Previous", systemImage: "backward.end.fill").labelStyle(.iconOnly) }
-                                .help("Previous (⌘←)")
-                                .disabled(player.queue.count < 2)
+                                .help(player.liveChannel == nil ? LocalizedStringKey("Previous (⌘←)") : LocalizedStringKey("Previous Channel (⌘←)"))
+                                .disabled(player.queue.count < 2 && player.liveChannel == nil)
                             Button { player.skip(-10) } label: { Image(systemName: "gobackward.10") }.help("Back 10 seconds (←)")
                             Button { player.togglePause() } label: {
                                 Image(systemName: player.isPaused ? "play.fill" : "pause.fill").font(.title)
@@ -225,8 +235,8 @@ struct VideoPlayerView: View {
                             .help(player.isPaused ? LocalizedStringKey("Play (Space)") : LocalizedStringKey("Pause (Space)"))
                             Button { player.skip(10) } label: { Image(systemName: "goforward.10") }.help("Forward 10 seconds (→)")
                             Button { player.next() } label: { Label("Next", systemImage: "forward.end.fill").labelStyle(.iconOnly) }
-                                .help("Next (⌘→)")
-                                .disabled((player.queueIndex ?? 0) + 1 >= player.queue.count)
+                                .help(player.liveChannel == nil ? LocalizedStringKey("Next (⌘→)") : LocalizedStringKey("Next Channel (⌘→)"))
+                                .disabled((player.queueIndex ?? 0) + 1 >= player.queue.count && player.liveChannel == nil)
                         }
                         .imageScale(.large)
                         Spacer()
@@ -497,6 +507,43 @@ private struct BufferedRange: View {
                 .frame(width: max(x(to) - x(from), 0), height: 4)
                 .position(x: (x(from) + x(to)) / 2, y: geometry.size.height / 2)
         }
+        .allowsHitTesting(false)
+    }
+}
+
+/// What shows while a video opens: its backdrop (TMDB, for movies and shows),
+/// else a still from it, or a channel's logo, dimmed under the spinner.
+private struct LoadingPicture: View {
+    @Environment(Player.self) private var player
+    @Environment(Library.self) private var library
+    @State private var backdrop: URL?
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if let channel = player.liveChannel {
+                AsyncImage(url: channel.logo) { image in image.resizable().scaledToFit() } placeholder: { Color.clear }
+                    .frame(maxWidth: 260, maxHeight: 160)
+                    .opacity(0.5)
+            } else if let item = player.currentItem {
+                let still = VideoStill(item: item, cornerRadius: 0).aspectRatio(16 / 9, contentMode: .fill)
+                Group {
+                    if let backdrop {
+                        AsyncImage(url: backdrop) { image in image.resizable().scaledToFill() } placeholder: { still }
+                    } else {
+                        still
+                    }
+                }
+                .overlay(Color.black.opacity(0.45))
+                .clipped()
+                .task(id: item.id) {
+                    // Only what TMDB knows, and never Adult items (kept out of `itemsByID`).
+                    guard [.movie, .episode, .documentary].contains(item.kind), library.index.itemsByID[item.id ?? -1] != nil else { return backdrop = nil }
+                    backdrop = await library.details(for: item)?.backdrop
+                }
+            }
+        }
+        .ignoresSafeArea()
         .allowsHitTesting(false)
     }
 }

@@ -37,9 +37,9 @@ final class AgentControl {
         return token
     }
 
-    func configure(library: Library, player: Player) {
+    func configure(library: Library, player: Player, liveTV: LiveTV) {
         mcp = MCPServer(name: "MacShow", version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0",
-                        instructions: AgentTools.instructions, tools: AgentTools.make(library: library, player: player))
+                        instructions: AgentTools.instructions, tools: AgentTools.make(library: library, player: player, liveTV: liveTV))
         apply()
     }
 

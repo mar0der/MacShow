@@ -27,6 +27,7 @@ cp "$BIN_DIR/macshow-mcp" "$APP/Contents/MacOS/macshow-mcp"  # the agent bridge,
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -R Resources/Licenses "$APP/Contents/Resources/"  # notices and license texts the bundled libraries require
+cp -R Resources/LiveTV "$APP/Contents/Resources/"  # the free channels Live TV comes with
 cp -R Resources/Localization/*.lproj "$APP/Contents/Resources/"  # translations (scripts/check-translations.sh)
 
 # Metadata.appintents: what Siri and Shortcuts read. Xcode makes it; a package

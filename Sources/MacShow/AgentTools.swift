@@ -5,12 +5,12 @@ import MacShowCore
 @MainActor
 enum AgentTools {
     static let instructions = """
-    MacShow is the user's media player for their own music, movies, TV shows, music videos and audiobooks. \
+    MacShow is the user's media player for their own music, movies, TV shows, music videos and audiobooks, and live TV. \
     Use search to find things (each result has an id), then play, queue or organize them by id. \
     now_playing tells what's on. Library changes (playlists, categories, details) may be switched off by the user (read-only).
     """
 
-    static func make(library: Library, player: Player) -> [MCPTool] {
+    static func make(library: Library, player: Player, liveTV: LiveTV) -> [MCPTool] {
         func items(_ arguments: JSONValue) throws -> [MediaItem] {
             let ids = (arguments["ids"]?.array ?? []).compactMap(\.int).map(Int64.init)
             let found = ids.compactMap { library.index.itemsByID[$0] }
@@ -75,6 +75,11 @@ enum AgentTools {
                 ]
             },
             MCPTool("now_playing", "What's playing: the item, position, paused or not, volume, and the queue.") { _ in
+                if let channel = player.liveChannel {
+                    let (now, _) = liveTV.nowAndNext(for: channel)
+                    return ["live_channel": .string(channel.name), "now": now.map { .string($0.title) } ?? .null,
+                            "paused": .bool(player.isPaused), "volume": .number(player.volume.rounded())]
+                }
                 guard let item = player.currentItem else {
                     return player.hasMedia ? ["title": .string(player.title), "position": .number(player.position.rounded())] : ["playing": false]
                 }
@@ -118,6 +123,28 @@ enum AgentTools {
                 let added = try items(arguments)
                 if arguments["next"]?.bool == true { player.playNext(added) } else { player.addToQueue(added) }
                 return ["queue_length": .number(Double(player.queue.count))]
+            },
+            MCPTool("live_channels", "Live TV channels (the free ones and the user's playlists), with what's on now and next. Optional words narrow them down by name or group.",
+                    input: ["type": "object", "properties": ["query": ["type": "string"]]]) { arguments in
+                let words = (arguments["query"]?.string ?? "").lowercased().split(separator: " ").map(String.init)
+                return .array(liveTV.channels.filter { channel in
+                    let text = "\(channel.name) \(channel.group ?? "")".lowercased()
+                    return words.allSatisfy(text.contains)
+                }.prefix(100).map { channel in
+                    let (now, next) = liveTV.nowAndNext(for: channel)
+                    return ["id": .string(channel.id), "name": .string(channel.name), "group": channel.group.map { .string($0) } ?? .null,
+                            "now": now.map { .string($0.title) } ?? .null, "next": next.map { .string($0.title) } ?? .null]
+                })
+            },
+            MCPTool("play_channel", "Put a live TV channel on, by its id from live_channels.",
+                    input: ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]) { arguments in
+                let channels = liveTV.channels
+                guard let channel = channels.first(where: { $0.id == arguments["id"]?.string }) else {
+                    throw MCPToolError("No channel with that id. live_channels lists them.")
+                }
+                player.playLive(channel, in: channels)
+                AppDelegate.openMainWindow?()
+                return ["playing": .string(channel.name)]
             },
             MCPTool("playlist_create", "Make a playlist, optionally with items.",
                     input: ["type": "object", "required": ["name"], "properties": ["name": ["type": "string"], "ids": ids]],
