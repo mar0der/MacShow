@@ -84,6 +84,7 @@ private struct VideoContextMenu: View {
                 }
             }
         }
+        SleepTimerMenu()
         Menu("Speed") {
             ForEach(Self.speeds, id: \.self) { speed in
                 Toggle(speed == 1 ? "Normal" : String(format: "%g×", speed), isOn: Binding(get: { player.speed == speed }, set: { _ in player.setSpeed(speed) }))

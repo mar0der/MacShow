@@ -242,7 +242,7 @@ struct BookDetailView: View {
     private var sleepLabel: String {
         switch player.sleepTimer {
         case .off: "Sleep"
-        case .endOfChapter: "End of Chapter"
+        case .endOfChapter, .endOfItem: "End of Chapter"
         case .at(let date): "\(max(Int(date.timeIntervalSinceNow / 60), 1)) min"
         }
     }
