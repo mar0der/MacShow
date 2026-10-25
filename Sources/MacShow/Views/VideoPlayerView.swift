@@ -57,8 +57,8 @@ struct VideoPlayerView: View {
                 player.reattachVideoOutput()
             }
 
-            if player.airPlay.isActive {
-                AirPlayScreen()
+            if let cast = player.activeCast {
+                CastScreen(cast: cast)
             }
 
             // Catches clicks on the picture (the Metal view itself doesn't).
@@ -81,7 +81,7 @@ struct VideoPlayerView: View {
                         }
                     }
                     Spacer()
-                    ForEach((player.formatInfo.components(separatedBy: " · ") + (player.airPlay.isActive ? [player.airPlay.summary] : [])).filter { !$0.isEmpty }, id: \.self) {
+                    ForEach((player.formatInfo.components(separatedBy: " · ") + (player.activeCast.map { [$0.summary] } ?? [])).filter { !$0.isEmpty }, id: \.self) {
                         Text($0).font(.system(size: 11, weight: .semibold))
                             .padding(.horizontal, 7).padding(.vertical, 3)
                             .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
@@ -134,6 +134,7 @@ struct VideoPlayerView: View {
                             AirPlayButton(airPlay: player.airPlay)
                                 .frame(width: 22, height: 22)
                                 .help("AirPlay")
+                            DLNAMenu()
                             TracksMenu()
                             Button { VideoScreen.toggleFullScreen() } label: {
                                 Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -228,18 +229,18 @@ private extension View {
     }
 }
 
-/// In place of the picture while the video plays over AirPlay.
-private struct AirPlayScreen: View {
-    @Environment(Player.self) private var player
+/// In place of the picture while the video plays on AirPlay or a TV.
+private struct CastScreen: View {
+    let cast: Cast
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "airplayvideo").font(.system(size: 56, weight: .light))
-            Text("Playing on AirPlay").font(.title2.weight(.semibold))
+            Image(systemName: cast is AirPlay ? "airplayvideo" : "tv").font(.system(size: 56, weight: .light))
+            Text("Playing on \(cast.deviceName)").font(.title2.weight(.semibold))
             // Whether the TV gets the file's own streams, untouched.
-            Text(player.airPlay.summary == "Direct" ? "Direct · original quality" : player.airPlay.summary)
+            Text(cast.summary == "Direct" ? "Direct · original quality" : cast.summary)
                 .foregroundStyle(.secondary)
-            if player.airPlay.hasPictureSubtitles {
+            if cast.hasPictureSubtitles {
                 Text("Picture subtitles (PGS, DVD) aren't sent to the TV.")
                     .font(.caption).foregroundStyle(.secondary)
             }
