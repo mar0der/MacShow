@@ -36,6 +36,7 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
 | Space | Play / pause (anywhere but a text field) |
 | ← → | Back / forward 10 seconds, ⇧ for 30 (video) |
 | ↑ ↓ | Volume (video); ⌘↑ ⌘↓ anywhere |
+| Scroll / two-finger swipe | Volume (over a video) |
 | ⌘← ⌘→ | Previous / next |
 | F or double-click | Full screen (video) |
 | M | Mute (video) |
