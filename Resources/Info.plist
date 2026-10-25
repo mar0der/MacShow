@@ -131,5 +131,11 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>MacShow looks for file servers in your home (a NAS, or Macs and PCs sharing folders) so you can add their media to your library.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_smb._tcp</string>
+	</array>
 </dict>
 </plist>

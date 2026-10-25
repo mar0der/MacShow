@@ -18,6 +18,7 @@ struct SettingsView: View {
 struct LibrarySettings: View {
     @Environment(Library.self) private var library
     @State private var selection: WatchedFolder.ID?
+    @State private var addingNetworkFolder = false
     @AppStorage(Library.fetchArtworkKey) private var fetchArtwork = true
 
     var body: some View {
@@ -25,16 +26,28 @@ struct LibrarySettings: View {
             Section {
                 List(library.folders, selection: $selection) { folder in
                     HStack {
-                        Label(folder.path.replacingOccurrences(of: Library.realHomeDirectory.path, with: "~"), systemImage: "folder")
+                        Label(folder.path.replacingOccurrences(of: Library.realHomeDirectory.path, with: "~"),
+                              systemImage: folder.isOnNetworkShare ? "server.rack" : "folder")
                         Spacer()
                         if library.offlineFolders.contains(folder.path) {
                             Text("Offline").font(.caption).foregroundStyle(.secondary)
+                            if let share = folder.remountURL.flatMap(URL.init(string:)) {
+                                Button("Connect") { NSWorkspace.shared.open(share) }
+                                    .controlSize(.small)
+                                    .help("Connect to \(share.host ?? "the server") again")
+                            }
                         }
                     }
                 }
                 .frame(minHeight: 140)
                 HStack {
-                    Button { addFolder() } label: { Image(systemName: "plus") }.help("Add Folder")
+                    Menu {
+                        Button("Add Folder…") { addFolder() }
+                        Button("Add Network Folder…") { addingNetworkFolder = true }
+                    } label: { Image(systemName: "plus") }
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("Add Folder")
                     Button {
                         if let folder = library.folders.first(where: { $0.id == selection }) { library.removeFolder(folder) }
                     } label: { Image(systemName: "minus") }
@@ -47,7 +60,7 @@ struct LibrarySettings: View {
             } header: {
                 Text("Watched Folders")
             } footer: {
-                Text("New files in these folders are added automatically. Folders on an external drive come back when it's plugged in.")
+                Text("New files in these folders are added automatically. Folders on an external drive come back when it's plugged in; folders on a network share reconnect by themselves and are rescanned every 15 minutes.")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -67,6 +80,10 @@ struct LibrarySettings: View {
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $addingNetworkFolder) { NetworkFolderSheet() }
+        #if DEBUG
+        .onAppear { if UserDefaults.standard.bool(forKey: "debugNetworkSheet") { addingNetworkFolder = true } }
+        #endif
     }
 
     private func addFolder() {
