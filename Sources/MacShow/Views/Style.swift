@@ -24,7 +24,7 @@ enum Format {
     /// 37_000 → "10 h 16 min", 900 → "15 min".
     static func duration(_ seconds: Double) -> String {
         let minutes = Int(seconds / 60)
-        return minutes >= 60 ? "\(minutes / 60) h \(minutes % 60) min" : "\(max(minutes, 1)) min"
+        return minutes >= 60 ? String(localized: "\(minutes / 60) h \(minutes % 60) min") : String(localized: "\(max(minutes, 1)) min")
     }
 }
 

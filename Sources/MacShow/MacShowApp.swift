@@ -69,7 +69,7 @@ struct MacShowApp: App {
             }
             CommandMenu("Controls") {
                 // Space itself is handled by VideoScreen, so it works whatever has focus.
-                Button(player.isPaused ? "Play (Space)" : "Pause (Space)") { player.togglePause() }
+                Button(player.isPaused ? LocalizedStringKey("Play (Space)") : LocalizedStringKey("Pause (Space)")) { player.togglePause() }
                     .disabled(!player.hasMedia)
                 Button("Next") { player.next() }.keyboardShortcut(.rightArrow)
                 Button("Previous") { player.previous() }.keyboardShortcut(.leftArrow)
@@ -79,12 +79,12 @@ struct MacShowApp: App {
                 Divider()
                 Button("Volume Up") { player.volume = min(100, player.volume + 5) }.keyboardShortcut(.upArrow)
                 Button("Volume Down") { player.volume = max(0, player.volume - 5) }.keyboardShortcut(.downArrow)
-                Button(player.isMuted ? "Unmute" : "Mute") { player.isMuted.toggle() }.keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                Button(player.isMuted ? LocalizedStringKey("Unmute") : LocalizedStringKey("Mute")) { player.isMuted.toggle() }.keyboardShortcut(.downArrow, modifiers: [.command, .option])
                 Divider()
                 Button("Full Screen Video") { VideoScreen.toggleFullScreen() }
                     .keyboardShortcut("f", modifiers: [.command, .control])
                     .disabled(!player.isVideo)
-                Button(PictureInPicture.shared.isActive ? "Exit Picture in Picture" : "Picture in Picture") {
+                Button(PictureInPicture.shared.isActive ? LocalizedStringKey("Exit Picture in Picture") : LocalizedStringKey("Picture in Picture")) {
                     PictureInPicture.shared.toggle(player, library: library)
                 }
                 .keyboardShortcut("p", modifiers: [.command, .option])
@@ -94,7 +94,7 @@ struct MacShowApp: App {
                     .disabled(!player.isVideo)
             }
             CommandGroup(after: .sidebar) {
-                Button(library.showingAdult ? "Hide Adult Content" : "Show Adult Content…") {
+                Button(library.showingAdult ? LocalizedStringKey("Hide Adult Content") : LocalizedStringKey("Show Adult Content…")) {
                     if library.showingAdult { library.showingAdult = false } else { unlockAdult(library) }
                 }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
@@ -199,7 +199,7 @@ func unlockAdult(_ library: Library) {
 
 /// Menu items can't read `openWindow` from the environment directly.
 private struct OpenWindowButton: View {
-    let title: String
+    let title: LocalizedStringKey
     let id: String
     @Environment(\.openWindow) private var openWindow
 

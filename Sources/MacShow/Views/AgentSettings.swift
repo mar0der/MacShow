@@ -64,7 +64,7 @@ struct AgentSettings: View {
         HStack(alignment: .top) {
             Text(text).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button(copied == text ? "Copied" : "Copy") {
+            Button(copied == text ? LocalizedStringKey("Copied") : LocalizedStringKey("Copy")) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
                 copied = text

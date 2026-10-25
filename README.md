@@ -24,6 +24,9 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
   Music Videos. Music videos also sit in Songs, where they play as audio.
 - **Artwork.** Get Info › Find Artwork Online (TMDB with your own key, Deezer, the
   iTunes Store, Wikipedia); Artists › Find Pictures gives every artist a photo.
+- **More.** Picture in Picture (⌥⌘P), favorites (and your play counts and loved songs
+  from the Music app), artist bios and audiobook details, a sleep timer for songs and
+  videos, ReplayGain leveling, and the whole app in Bulgarian.
 - **TV niceties.** Mark where a show's recap ends and its credits start (right-click
   the video › Recap & Credits): Skip Recap, Up Next at the credits, another show
   after the last episode. Subtitle files next to a video load by themselves.

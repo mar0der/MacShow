@@ -235,9 +235,9 @@ struct ContentSettings: View {
 
     static func title(_ kind: FolderRule.Kind) -> String {
         switch kind {
-        case .excluded: "Never Scan"
-        case .personal: "Personal"
-        case .adult: "Adult"
+        case .excluded: String(localized: "Never Scan")
+        case .personal: String(localized: "Personal")
+        case .adult: String(localized: "Adult")
         }
     }
 

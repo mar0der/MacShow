@@ -55,16 +55,16 @@ struct MovieDetailView: View {
                 if let tagline = details?.tagline { Text(tagline).italic().foregroundStyle(.secondary) }
                 HStack(spacing: 10) {
                     Button { player.play([movie], showVideo: true) } label: {
-                        Label(saved?.isResumable == true ? "Resume" : "Play", systemImage: "play.fill").frame(minWidth: 90)
+                        Label(saved?.isResumable == true ? LocalizedStringKey("Resume") : LocalizedStringKey("Play"), systemImage: "play.fill").frame(minWidth: 90)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     let loved = library.isFavorite([movie])
                     Button { library.toggleFavorite([movie]) } label: {
-                        Label(loved ? "Remove from Favorites" : "Love", systemImage: loved ? "heart.fill" : "heart").labelStyle(.iconOnly)
+                        Label(loved ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Love"), systemImage: loved ? "heart.fill" : "heart").labelStyle(.iconOnly)
                     }
                     .controlSize(.large)
-                    .help(loved ? "Remove from Favorites" : "Love")
+                    .help(loved ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Love"))
                     if let saved, saved.isResumable {
                         Button("Play from Beginning") { player.play([movie], fromBeginning: true, showVideo: true) }
                             .controlSize(.large)

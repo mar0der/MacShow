@@ -69,7 +69,7 @@ struct PlayerBar: View {
                 }
                     .buttonStyle(.borderless)
                     .imageScale(.large)
-                    .help(showsLyrics ? "Hide Lyrics" : "Lyrics")
+                    .help(showsLyrics ? LocalizedStringKey("Hide Lyrics") : LocalizedStringKey("Lyrics"))
             }
             if player.currentItem?.kind != .audiobook {
                 SleepTimerMenu()
@@ -114,7 +114,7 @@ struct BookTransportControls: View {
                     .frame(width: large ? 60 : 36, height: large ? 60 : 36)
                     .background(large ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary.opacity(0.1)), in: Circle())
             }
-            .help(player.isPaused ? "Play" : "Pause")
+            .help(player.isPaused ? LocalizedStringKey("Play") : LocalizedStringKey("Pause"))
             Button { player.skip(30) } label: { Image(systemName: "goforward.30") }
                 .help("Forward 30 Seconds")
             Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill") }
@@ -152,7 +152,7 @@ struct TransportControls: View {
                     .frame(width: 36, height: 36)
                     .background(.primary.opacity(0.1), in: Circle())
             }
-            .help(player.isPaused ? "Play" : "Pause")
+            .help(player.isPaused ? LocalizedStringKey("Play") : LocalizedStringKey("Pause"))
             Button { player.next() } label: { Image(systemName: "forward.fill") }
                 .help("Next")
             Button {

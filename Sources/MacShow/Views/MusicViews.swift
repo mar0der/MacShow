@@ -177,12 +177,12 @@ struct TrackRow: View {
             // Loved songs show their heart; others offer one on hover.
             let loved = library.isFavorite([track])
             Button { library.toggleFavorite([track]) } label: {
-                Label(loved ? "Remove from Favorites" : "Love", systemImage: loved ? "heart.fill" : "heart").labelStyle(.iconOnly)
+                Label(loved ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Love"), systemImage: loved ? "heart.fill" : "heart").labelStyle(.iconOnly)
             }
             .buttonStyle(.borderless)
             .foregroundStyle(loved ? AnyShapeStyle(.pink) : AnyShapeStyle(.secondary))
             .opacity(loved || hovering ? 1 : 0)
-            .help(loved ? "Remove from Favorites" : "Love")
+            .help(loved ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Love"))
             Text(Format.time(track.duration)).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
@@ -218,7 +218,7 @@ struct ArtistsView: View {
                                     VStack(spacing: 2) {
                                         Text(artist.name).font(.callout.weight(.semibold)).lineLimit(1)
                                         if artist.isFeaturedOnly {
-                                            Text("Featured on \(artist.appearances.count) song\(artist.appearances.count == 1 ? "" : "s")")
+                                            Text(artist.appearances.count == 1 ? LocalizedStringKey("Featured on 1 song") : "Featured on \(artist.appearances.count) songs")
                                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                         }
                                     }
@@ -258,7 +258,7 @@ struct ArtistsView: View {
             }
             Toggle(isOn: $showFeatured) { Label("Featured Artists", systemImage: "person.2") }
                 .toggleStyle(.button)
-                .help(showFeatured ? "Hide artists who are only featured on songs" : "Also show artists featured on songs")
+                .help(showFeatured ? LocalizedStringKey("Hide artists who are only featured on songs") : LocalizedStringKey("Also show artists featured on songs"))
         }
     }
 }
@@ -300,7 +300,7 @@ struct ArtistDetailView: View {
                     subtitle: artist.appearsWith.map { "Featured with \($0)" } ?? "",
                     details: [artist.albums.isEmpty ? nil : "\(artist.albums.count) albums",
                               artist.songs.isEmpty ? nil : "\(artist.songs.count) songs",
-                              artist.appearances.isEmpty ? nil : "Featured on \(artist.appearances.count) song\(artist.appearances.count == 1 ? "" : "s")"]
+                              artist.appearances.isEmpty ? nil : artist.appearances.count == 1 ? String(localized: "Featured on 1 song") : String(localized: "Featured on \(artist.appearances.count) songs")]
                         .compactMap { $0 }.joined(separator: " · "),
                     circular: true, items: artist.songs.isEmpty ? artist.appearances : artist.songs
                 )
@@ -308,7 +308,7 @@ struct ArtistDetailView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(text).lineLimit(bioExpanded ? nil : 3).frame(maxWidth: 720, alignment: .leading)
                         HStack {
-                            Button(bioExpanded ? "Less" : "More") { bioExpanded.toggle() }.buttonStyle(.link)
+                            Button(bioExpanded ? LocalizedStringKey("Less") : LocalizedStringKey("More")) { bioExpanded.toggle() }.buttonStyle(.link)
                             Text("From Wikipedia").font(.caption).foregroundStyle(.tertiary)
                         }
                     }
@@ -454,13 +454,13 @@ struct SmartPlaylistView: View {
                         .frame(width: 220, height: 220)
                         .background(.tint.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(list.title).font(.largeTitle.weight(.bold))
-                        Text("\(songs.count) song\(songs.count == 1 ? "" : "s") · fills itself as you listen").font(.callout).foregroundStyle(.secondary)
+                        Text(LocalizedStringKey(list.title)).font(.largeTitle.weight(.bold))
+                        Text(songs.count == 1 ? LocalizedStringKey("1 song · fills itself as you listen") : "\(songs.count) songs · fills itself as you listen").font(.callout).foregroundStyle(.secondary)
                         PlayShuffleButtons(items: songs).padding(.top, 8)
                     }
                 }
                 if songs.isEmpty {
-                    Text(list == .recentlyPlayed || list == .mostPlayed ? "Songs appear here once you've listened to most of them." : "Nothing here.")
+                    Text(list == .recentlyPlayed || list == .mostPlayed ? LocalizedStringKey("Songs appear here once you've listened to most of them.") : LocalizedStringKey("Nothing here."))
                         .foregroundStyle(.secondary)
                 } else {
                     TrackList(tracks: songs, showsArtist: true, numbered: false)
@@ -468,7 +468,7 @@ struct SmartPlaylistView: View {
             }
             .padding(28)
         }
-        .navigationTitle(list.title)
+        .navigationTitle(LocalizedStringKey(list.title))
     }
 }
 

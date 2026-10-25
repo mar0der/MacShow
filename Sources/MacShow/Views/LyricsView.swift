@@ -18,7 +18,7 @@ struct LyricsView: View {
                 } else {
                     ContentUnavailableView(loading ? "Looking for Lyrics…" : lyrics?.isInstrumental == true ? "Instrumental" : "No Lyrics",
                                            systemImage: "quote.bubble",
-                                           description: Text(loading ? "" : "Add an .lrc file named like the song next to it, or turn on looking them up online in Settings › Library."))
+                                           description: Text(loading ? LocalizedStringKey("") : LocalizedStringKey("Add an .lrc file named like the song next to it, or turn on looking them up online in Settings › Library.")))
                 }
             } else {
                 ContentUnavailableView("Nothing Playing", systemImage: "quote.bubble")

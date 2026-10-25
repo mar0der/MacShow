@@ -26,6 +26,14 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Open source under the MIT license.</string>
+	<!-- English, and Bulgarian when the Mac (or MacShow, in System Settings › General › Language & Region) is set to it. -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>bg</string>
+	</array>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<!-- Formats macOS doesn't define itself, so Finder knows they're audio or video. -->

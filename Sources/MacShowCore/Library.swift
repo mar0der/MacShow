@@ -786,6 +786,8 @@ public final class Library {
                                 uniquingKeysWith: { first, _ in first })
         var result = (playlists: 0, songs: 0, missing: 0, history: 0, favorites: 0)
         if !["m3u", "m3u8"].contains(url.pathExtension.lowercased()) {
+            // Plays still being saved must land first, or they'd add to the imported count.
+            flushPendingWrites()
             for track in try PlaylistFile.musicLibraryHistory(data) {
                 guard let id = (byPath[track.path] ?? byPath[URL(fileURLWithPath: track.path).canonicalPath])?.id else { continue }
                 if track.playCount > 0 {

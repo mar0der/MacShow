@@ -67,11 +67,11 @@ private struct VideoContextMenu: View {
     private static let speeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
     var body: some View {
-        Button(player.isPaused ? "Play" : "Pause") { player.togglePause() }
+        Button(player.isPaused ? LocalizedStringKey("Play") : LocalizedStringKey("Pause")) { player.togglePause() }
         Button("Back 10 Seconds") { player.skip(-10) }
         Button("Forward 10 Seconds") { player.skip(10) }
         if let index = player.queueIndex, index + 1 < player.queue.count {
-            Button(player.queue[index + 1].kind == .episode ? "Next Episode" : "Next") { player.next() }
+            Button(player.queue[index + 1].kind == .episode ? LocalizedStringKey("Next Episode") : LocalizedStringKey("Next")) { player.next() }
         }
         Divider()
         TrackChoices()
@@ -108,7 +108,7 @@ private struct VideoContextMenu: View {
             }
         }
         Divider()
-        Button(VideoScreen.isFullScreen ? "Exit Full Screen" : "Enter Full Screen") { VideoScreen.toggleFullScreen() }
+        Button(VideoScreen.isFullScreen ? LocalizedStringKey("Exit Full Screen") : LocalizedStringKey("Enter Full Screen")) { VideoScreen.toggleFullScreen() }
         Button("Picture in Picture") { PictureInPicture.shared.open(player, library: library) }
         Button("Back to Library") { player.isVideoMinimized = true }
         if let item = player.currentItem {
@@ -198,7 +198,7 @@ struct VideoPlayerView: View {
                             Button { player.isMuted.toggle() } label: {
                                 Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.caption)
                             }
-                            .help(player.isMuted ? "Unmute (M)" : "Mute (M)")
+                            .help(player.isMuted ? LocalizedStringKey("Unmute (M)") : LocalizedStringKey("Mute (M)"))
                             Slider(value: $player.volume, in: 0...100).controlSize(.small).frame(width: 110)
                         }
                         .frame(width: 200, alignment: .leading)
@@ -211,7 +211,7 @@ struct VideoPlayerView: View {
                             Button { player.togglePause() } label: {
                                 Image(systemName: player.isPaused ? "play.fill" : "pause.fill").font(.title)
                             }
-                            .help(player.isPaused ? "Play (Space)" : "Pause (Space)")
+                            .help(player.isPaused ? LocalizedStringKey("Play (Space)") : LocalizedStringKey("Pause (Space)"))
                             Button { player.skip(10) } label: { Image(systemName: "goforward.10") }.help("Forward 10 seconds (→)")
                             Button { player.next() } label: { Label("Next", systemImage: "forward.end.fill").labelStyle(.iconOnly) }
                                 .help("Next (⌘→)")
@@ -441,7 +441,7 @@ struct FloatingVideo: View {
                     Button { player.togglePause() } label: {
                         Image(systemName: player.isPaused ? "play.fill" : "pause.fill").font(.title)
                     }
-                    .help(player.isPaused ? "Play" : "Pause")
+                    .help(player.isPaused ? LocalizedStringKey("Play") : LocalizedStringKey("Pause"))
                     VStack {
                         HStack {
                             Button { player.isVideoMinimized = false } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }

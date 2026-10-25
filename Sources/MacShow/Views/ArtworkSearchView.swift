@@ -20,7 +20,7 @@ struct ArtworkSearchView: View {
             }
             ScrollView {
                 if results.isEmpty {
-                    Text(searching ? "Searching…" : "Nothing found. Try other words.")
+                    Text(searching ? LocalizedStringKey("Searching…") : LocalizedStringKey("Nothing found. Try other words."))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, minHeight: 200)
                 } else {
@@ -50,7 +50,7 @@ struct ArtworkSearchView: View {
                 }
             }
             HStack {
-                Text(kind == .artist ? "From Deezer." : "From TMDB, Deezer, the iTunes Store and Wikipedia.").font(.caption).foregroundStyle(.secondary)
+                Text(kind == .artist ? LocalizedStringKey("From Deezer.") : LocalizedStringKey("From TMDB, Deezer, the iTunes Store and Wikipedia.")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
             }

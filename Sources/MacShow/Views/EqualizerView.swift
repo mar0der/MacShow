@@ -13,9 +13,9 @@ struct EqualizerView: View {
             HStack {
                 Toggle("On", isOn: $player.equalizerOn).toggleStyle(.switch)
                 Spacer()
-                Menu(presetName(player.activeEqualizer)) {
+                Menu(LocalizedStringKey(presetName(player.activeEqualizer))) {
                     ForEach(Equalizer.presets, id: \.name) { preset in
-                        Button(preset.name) { set(preset.equalizer) }
+                        Button(LocalizedStringKey(preset.name)) { set(preset.equalizer) }
                     }
                 }
                 .fixedSize()

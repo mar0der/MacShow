@@ -14,7 +14,7 @@ struct MediaMenu: View {
         Button("Play Next") { player.playNext(playable) }
         Button("Add to Queue") { player.addToQueue(playable) }
         Divider()
-        Button(library.isFavorite(items) ? "Remove from Favorites" : "Love") { library.toggleFavorite(items) }
+        Button(library.isFavorite(items) ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Love")) { library.toggleFavorite(items) }
         Menu("Add to Playlist") {
             Button("New Playlist") { library.createPlaylist(named: Self.newPlaylistName(library), with: playable) }
             if !library.playlists.isEmpty { Divider() }
@@ -59,13 +59,13 @@ struct FolderRuleMenu: View {
                 }
                 Button("Never Scan This Folder") { library.setRule(.excluded, for: folder) }
             }
-            Button(items.count == 1 ? "Hide from Library" : "Hide \(items.count) Items from Library") {
+            Button(items.count == 1 ? LocalizedStringKey("Hide from Library") : LocalizedStringKey("Hide \(items.count) Items from Library")) {
                 for item in items { library.setRule(.excluded, for: item.url) }
             }
         }
     }
 
-    private func option(_ title: String, _ kind: FolderRule.Kind?, current: FolderRule.Kind?, folder: URL) -> some View {
+    private func option(_ title: LocalizedStringKey, _ kind: FolderRule.Kind?, current: FolderRule.Kind?, folder: URL) -> some View {
         Toggle(title, isOn: Binding(get: { current == kind }, set: { _ in library.setRule(kind, for: folder) }))
     }
 }
@@ -79,7 +79,7 @@ struct CategoryMenu: View {
     var body: some View {
         if !items.isEmpty {
             let isVideo = items.allSatisfy(\.isVideo)
-            let choices: [(String, MediaItem.Kind)] = isVideo
+            let choices: [(LocalizedStringKey, MediaItem.Kind)] = isVideo
                 ? [("Movies", .movie), ("TV Shows", .episode), ("Home Videos", .homeVideo), ("Music Videos", .musicVideo)]
                 : [("Songs", .music), ("Audiobooks", .audiobook)]
             let current = Set(items.map(\.kind))

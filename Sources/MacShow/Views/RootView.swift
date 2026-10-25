@@ -37,7 +37,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         }
     }
 
-    var title: String {
+    var title: LocalizedStringKey {
         switch self {
         case .home: "Home"
         case .albums: "Albums"
@@ -50,7 +50,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .books: "All Books"
         case .adult: "Adult"
         case .playlist: "Playlist"
-        case .smart(let list): list.title
+        case .smart(let list): LocalizedStringKey(list.title)
         }
     }
 
@@ -215,14 +215,14 @@ struct RootView: View {
             case .albums: AlbumsView()
             case .artists: ArtistsView()
             case .songs: SongsView()
-            case .movies: VideoGridView(title: "Movies", icon: "film", videos: library.index.movies)
+            case .movies: VideoGridView(title: "Movies", emptyTitle: "No Movies", icon: "film", videos: library.index.movies)
             case .shows: ShowsView()
-            case .homeVideos: VideoGridView(title: "Home Videos", icon: "video", videos: library.index.homeVideos)
-            case .musicVideos: VideoGridView(title: "Music Videos", icon: "music.note.tv", videos: library.index.musicVideos)
+            case .homeVideos: VideoGridView(title: "Home Videos", emptyTitle: "No Home Videos", icon: "video", videos: library.index.homeVideos)
+            case .musicVideos: VideoGridView(title: "Music Videos", emptyTitle: "No Music Videos", icon: "music.note.tv", videos: library.index.musicVideos)
             case .books: BooksView()
             case .adult:
                 if library.showingAdult {
-                    VideoGridView(title: "Adult", icon: "eye.slash", videos: library.index.adult)
+                    VideoGridView(title: "Adult", emptyTitle: "Nothing Here", icon: "eye.slash", videos: library.index.adult)
                 } else {
                     HomeView()
                 }
@@ -240,7 +240,7 @@ struct RootView: View {
 
 /// Shown when a section has nothing in it yet.
 struct EmptyLibraryView: View {
-    let title: String
+    let title: LocalizedStringKey
     let icon: String
 
     var body: some View {
