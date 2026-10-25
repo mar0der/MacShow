@@ -17,6 +17,16 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
   browse; Up Next at the end of an episode, Skip Intro on intro chapters.
 - **Audiobooks.** Chaptered M4B files or folders of MP3s, chapters, speed,
   sleep timer, bookmarks, resume to the second.
+- **Network folders.** Add folders from a NAS or shared Macs and PCs (Settings ›
+  Library › + › Add Network Folder); they reconnect by themselves and are rescanned
+  every 15 minutes.
+- **Sorted the way you want.** Right-click › Move To: Movies, TV Shows, Home Videos,
+  Music Videos. Music videos also sit in Songs, where they play as audio.
+- **Artwork.** Get Info › Find Artwork Online (TMDB with your own key, Deezer, the
+  iTunes Store, Wikipedia); Artists › Find Pictures gives every artist a photo.
+- **TV niceties.** Mark where a show's recap ends and its credits start (right-click
+  the video › Recap & Credits): Skip Recap, Up Next at the credits, another show
+  after the last episode. Subtitle files next to a video load by themselves.
 - **Yours to keep.** Edit titles, artists and artwork with Get Info (stored in
   MacShow, never written into your files). Import playlists from the Music app's
   exported library or M3U, export any playlist as M3U. Settings › Content lists
