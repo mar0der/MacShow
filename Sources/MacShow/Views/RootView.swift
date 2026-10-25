@@ -4,12 +4,15 @@ import SwiftUI
 enum SidebarItem: Hashable, RawRepresentable {
     case home, albums, artists, songs, movies, shows, homeVideos, musicVideos, books, adult
     case playlist(Int64)
+    case smart(SmartList)
 
     static let fixed: [SidebarItem] = [.home, .albums, .artists, .songs, .movies, .shows, .homeVideos, .musicVideos, .books, .adult]
 
     init?(rawValue: String) {
         if rawValue.hasPrefix("playlist:"), let id = Int64(rawValue.dropFirst("playlist:".count)) {
             self = .playlist(id)
+        } else if rawValue.hasPrefix("smart:"), let list = SmartList(rawValue: String(rawValue.dropFirst("smart:".count))) {
+            self = .smart(list)
         } else if let item = Self.fixed.first(where: { $0.rawValue == rawValue }) {
             self = item
         } else {
@@ -30,6 +33,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .books: "books"
         case .adult: "adult"
         case .playlist(let id): "playlist:\(id)"
+        case .smart(let list): "smart:" + list.rawValue
         }
     }
 
@@ -46,6 +50,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .books: "All Books"
         case .adult: "Adult"
         case .playlist: "Playlist"
+        case .smart(let list): list.title
         }
     }
 
@@ -62,6 +67,7 @@ enum SidebarItem: Hashable, RawRepresentable {
         case .books: "book"
         case .adult: "eye.slash"
         case .playlist: "music.note.list"
+        case .smart(let list): list.icon
         }
     }
 }
@@ -153,6 +159,7 @@ struct RootView: View {
             }
             Section("Audiobooks") { row(.books) }
             Section {
+                ForEach(SmartList.allCases, id: \.self) { row(.smart($0)) }
                 ForEach(library.playlists) { contents in
                     if let id = contents.playlist.id {
                         Label(contents.playlist.name, systemImage: "music.note.list")
@@ -216,6 +223,7 @@ struct RootView: View {
                 } else {
                     HomeView()
                 }
+            case .smart(let list): SmartPlaylistView(list: list)
             case .playlist(let id):
                 if let contents = library.playlists.first(where: { $0.playlist.id == id }) {
                     PlaylistView(contents: contents)

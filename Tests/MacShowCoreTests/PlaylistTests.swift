@@ -116,3 +116,29 @@ struct EqualizerTests {
         #expect(Equalizer.presets.allSatisfy { $0.equalizer.gains.count == Equalizer.frequencies.count })
     }
 }
+
+struct SmartListTests {
+    @Test func listsFillFromPlays() throws {
+        let database = try LibraryDatabase.inMemory()
+        var songs = [makeItem("/m/a.mp3"), makeItem("/m/b.mp3"), makeItem("/m/c.mp3")]
+        try database.upsert(songs)
+        songs = try database.allItems().sorted { $0.path < $1.path }
+        for (offset, index) in songs.indices.enumerated() { songs[index].addedAt = Date(timeIntervalSince1970: Double(offset)) }
+        let a = songs[0].id!, b = songs[1].id!
+        try database.recordPlay(of: a, at: Date(timeIntervalSince1970: 100))
+        try database.recordPlay(of: b, at: Date(timeIntervalSince1970: 200))
+        try database.recordPlay(of: a, at: Date(timeIntervalSince1970: 50))
+        let stats = try database.playStats()
+        #expect(stats[a]?.playCount == 2 && stats[b]?.playCount == 1)
+
+        func paths(_ list: SmartList) -> [String] { list.songs(in: songs, stats: stats).map(\.path) }
+        #expect(paths(.recentlyPlayed) == ["/m/b.mp3", "/m/a.mp3"])
+        #expect(paths(.mostPlayed) == ["/m/a.mp3", "/m/b.mp3"])
+        #expect(paths(.recentlyAdded) == ["/m/c.mp3", "/m/b.mp3", "/m/a.mp3"])
+        #expect(paths(.neverPlayed) == ["/m/c.mp3"])
+
+        // Stats go with the song.
+        try database.deleteItems(paths: ["/m/a.mp3"])
+        #expect(try database.playStats()[a] == nil)
+    }
+}

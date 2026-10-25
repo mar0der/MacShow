@@ -15,6 +15,8 @@ public final class Library {
     /// a position every few seconds doesn't regroup the whole library.
     public private(set) var positions: [Int64: PlaybackPosition] = [:]
     public private(set) var bookmarks: [Bookmark] = []
+    /// Play counts of songs and music videos, by item id.
+    public private(set) var playStats: [Int64: PlayStat] = [:]
     public private(set) var folders: [WatchedFolder] = []
     /// Watched folders that can't be reached right now (an unplugged drive).
     /// Their items stay in the library, shown as unavailable.
@@ -101,6 +103,7 @@ public final class Library {
         // Re-read at most about once a second while a scan is writing batches.
         positions = (try? database.writer.read(LibraryDatabase.positions)) ?? [:]
         bookmarks = (try? database.bookmarks()) ?? []
+        playStats = (try? database.playStats()) ?? [:]
         folderRules = (try? database.folderRules()) ?? []
         artistImages = (try? database.writer.read { db in
             Dictionary(try Row.fetchAll(db, sql: "SELECT artistId, artworkKey FROM artistImage").map { ($0["artistId"], $0["artworkKey"]) },
@@ -426,6 +429,21 @@ public final class Library {
         unpublishedPositions[id] = nil
         let database = database
         writeQueue.async { try? database.clearPosition(for: id) }
+    }
+
+    // MARK: Play counts
+
+    /// A song was played (most of it): counts toward Recently and Most Played.
+    public func recordPlay(of item: MediaItem) {
+        guard let id = item.id else { return }
+        let now = Date()
+        playStats[id] = PlayStat(mediaItemId: id, playCount: (playStats[id]?.playCount ?? 0) + 1, lastPlayedAt: now)
+        let database = database
+        writeQueue.async { try? database.recordPlay(of: id, at: now) }
+    }
+
+    public func songs(in list: SmartList) -> [MediaItem] {
+        list.songs(in: index.songs, stats: playStats)
     }
 
     // MARK: Lyrics

@@ -55,6 +55,8 @@ final class Player {
         didSet { Player.save(albumEqualizers, key: "albumEqualizers"); applyEqualizer() }
     }
     @ObservationIgnored private var appliedFilter = ""
+    /// The file whose play was counted, so one listen counts once.
+    @ObservationIgnored private var countedPath: String?
 
     /// Album equalizers are keyed by album artist and album.
     static func albumKey(_ item: MediaItem?) -> String? {
@@ -665,6 +667,7 @@ final class Player {
                         }
                         self.position = 0
                         self.lastSavedSecond = -1
+                        self.countedPath = nil
                         self.applyEqualizer()
                         // On the TV, the next video goes there too.
                         if self.airPlay.isActive, let path {
@@ -737,6 +740,11 @@ final class Player {
             if bucket != lastSavedSecond {
                 lastSavedSecond = bucket
                 savePosition(publish: false)
+            }
+            // A song counts as played at half its length or 4 minutes, whichever is first.
+            if let item = loadedItem, item.isMusic, countedPath != item.path, duration > 0, position >= min(duration * 0.5, 240) {
+                countedPath = item.path
+                library?.recordPlay(of: item)
             }
             if sleepRetargetOnLoad, let loaded = loadedItem, loaded.path != sleepRetargetFrom {
                 sleepRetargetOnLoad = false

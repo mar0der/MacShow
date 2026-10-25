@@ -416,6 +416,39 @@ struct PlaylistView: View {
     }
 }
 
+/// Recently Played, Most Played, Recently Added, Never Played.
+struct SmartPlaylistView: View {
+    let list: SmartList
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        let songs = library.songs(in: list)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(alignment: .bottom, spacing: 24) {
+                    Image(systemName: list.icon)
+                        .font(.system(size: 72, weight: .light))
+                        .frame(width: 220, height: 220)
+                        .background(.tint.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(list.title).font(.largeTitle.weight(.bold))
+                        Text("\(songs.count) song\(songs.count == 1 ? "" : "s") · fills itself as you listen").font(.callout).foregroundStyle(.secondary)
+                        PlayShuffleButtons(items: songs).padding(.top, 8)
+                    }
+                }
+                if songs.isEmpty {
+                    Text(list == .recentlyPlayed || list == .mostPlayed ? "Songs appear here once you've listened to most of them." : "Nothing here.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    TrackList(tracks: songs, showsArtist: true, numbered: false)
+                }
+            }
+            .padding(28)
+        }
+        .navigationTitle(list.title)
+    }
+}
+
 struct PlayShuffleButtons: View {
     let items: [MediaItem]
     @Environment(Player.self) private var player
