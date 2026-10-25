@@ -165,6 +165,11 @@ final class Player {
     var currentItem: MediaItem? { queueIndex.flatMap { queue.indices.contains($0) ? queue[$0] : nil } }
     /// The loaded file has a real video track (not just cover art).
     private(set) var isVideo = false
+    /// How far into the file is read ahead (seconds), drawn on the seek bar.
+    private(set) var bufferedUntil: Double = 0
+    /// Paused until enough is read ahead (a slow network share), and how far along that is (0–100).
+    private(set) var isBuffering = false
+    private(set) var bufferingPercent = 0
     /// The video keeps playing in a corner while you browse the library.
     /// Starting something new brings it back full size.
     var isVideoMinimized = false
@@ -210,6 +215,7 @@ final class Player {
             ("track-list/count", MPV_FORMAT_INT64), ("sid", MPV_FORMAT_STRING), ("aid", MPV_FORMAT_STRING),
             ("chapter", MPV_FORMAT_INT64),
             ("audio-params/samplerate", MPV_FORMAT_INT64), ("audio-out-params/samplerate", MPV_FORMAT_INT64),
+            ("demuxer-cache-time", MPV_FORMAT_DOUBLE), ("paused-for-cache", MPV_FORMAT_FLAG), ("cache-buffering-state", MPV_FORMAT_INT64),
         ] {
             mpv_observe_property(mpv, 0, name, format)
         }
@@ -665,6 +671,17 @@ final class Player {
                     if audioOnly.contains(path) {
                         mpv_set_property_string(mpv, "file-local-options/vid", "no")
                     }
+                    // mpv treats a file on a mounted share as local and reads only just ahead;
+                    // like a stream, it reads well ahead and waits for a few seconds' worth
+                    // rather than stuttering on a slow connection.
+                    if (try? URL(fileURLWithPath: path, isDirectory: false).resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal == false {
+                        // Big reads: with a long round trip, mpv's usual 128 KB ones crawl.
+                        for (name, value) in [("cache", "yes"), ("stream-buffer-size", "4MiB"),
+                                              ("demuxer-max-bytes", "500MiB"), ("demuxer-max-back-bytes", "100MiB"),
+                                              ("cache-pause-initial", "yes"), ("cache-pause-wait", "3")] {
+                            mpv_set_property_string(mpv, "file-local-options/" + name, value)
+                        }
+                    }
                 }
                 mpv_hook_continue(mpv, hook.id)
             case MPV_EVENT_FILE_LOADED:
@@ -780,6 +797,9 @@ final class Player {
             }
             return
         case "duration": duration = value as? Double ?? 0
+        case "demuxer-cache-time": bufferedUntil = value as? Double ?? 0
+        case "paused-for-cache": isBuffering = value as? Bool ?? false
+        case "cache-buffering-state": bufferingPercent = value as? Int ?? 0
         case "pause":
             isPaused = value as? Bool ?? true
             if isPaused { savePosition() }

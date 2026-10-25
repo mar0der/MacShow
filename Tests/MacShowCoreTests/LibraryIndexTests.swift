@@ -266,6 +266,11 @@ struct CategoryTests {
         #expect(LibraryIndex.sportCategory(of: byID[1]!) == "Formula 1")
         #expect(LibraryIndex.sportCategory(of: byID[2]!) == nil)
         #expect(LibraryIndex.sportCategory(of: byID[5]!) == "Football")
+        // A folder for one match or race isn't a kind of sport.
+        for event in ["/S/Sports/Ludogorets - Lazio_27_02_14/1.ts", "/S/Sports/France vs Bulgaria/a.avi", "/S/Sports/GP 13.09.2010/race.mkv"] {
+            #expect(LibraryIndex.sportCategory(of: video(event, id: 9)) == nil)
+        }
+        #expect(LibraryIndex.sportCategory(of: video("/S/Sports/Formula 1/GP 13.09.2010/race.mkv", id: 9)) == "Formula 1")
     }
 
     @Test func adultClipsAreShorterThanFiveMinutes() {

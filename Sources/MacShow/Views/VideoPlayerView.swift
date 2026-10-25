@@ -146,6 +146,16 @@ struct VideoPlayerView: View {
                 CastScreen(cast: cast)
             }
 
+            if player.isBuffering {
+                VStack(spacing: 10) {
+                    ProgressView().controlSize(.large)
+                    Text("Buffering… \(player.bufferingPercent)%").font(.callout.weight(.semibold))
+                }
+                .padding(20)
+                .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
+                .allowsHitTesting(false)
+            }
+
             // Catches clicks on the picture (the Metal view itself doesn't).
             Color.clear
                 .contentShape(Rectangle())
@@ -190,6 +200,7 @@ struct VideoPlayerView: View {
                     HStack(spacing: 12) {
                         Text(Format.time(player.position)).monospacedDigit()
                         Slider(value: Binding(get: { player.position }, set: { player.seek(to: $0) }), in: 0...max(player.duration, 1))
+                            .background { BufferedRange(from: player.position, to: player.bufferedUntil, duration: player.duration) }
                         Text("-" + Format.time(player.duration - player.position)).monospacedDigit()
                     }
                     .font(.caption)
@@ -468,5 +479,24 @@ struct FloatingVideo: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.15)))
         .shadow(color: .black.opacity(0.5), radius: 16, y: 6)
         .onHover { hovering = $0 }
+    }
+}
+
+/// The part of the seek bar already read ahead, lighter, like YouTube's.
+private struct BufferedRange: View {
+    let from: Double
+    let to: Double
+    let duration: Double
+
+    var body: some View {
+        GeometryReader { geometry in
+            let inset: CGFloat = 10  // the track starts and ends half a knob in
+            let track = max(geometry.size.width - inset * 2, 0)
+            let x = { (time: Double) in inset + track * CGFloat(min(max(time / max(duration, 1), 0), 1)) }
+            Capsule().fill(.white.opacity(0.4))
+                .frame(width: max(x(to) - x(from), 0), height: 4)
+                .position(x: (x(from) + x(to)) / 2, y: geometry.size.height / 2)
+        }
+        .allowsHitTesting(false)
     }
 }

@@ -81,9 +81,10 @@ struct SourceFiltered<Content: View>: View {
     }
 }
 
-/// Sports, grouped by kind of sport ("Formula 1", "Football"…); the rest under Other.
+/// Sports, one tab per kind of sport ("Formula 1", "Football"…; the rest under Other).
 struct SportsView: View {
     @Environment(Library.self) private var library
+    @AppStorage("sportsTab") private var tab: String?
 
     var body: some View {
         let sports = library.index.sports
@@ -93,20 +94,23 @@ struct SportsView: View {
             } else {
                 SourceFiltered(section: "sports", items: sports) { shown in
                     let groups = Dictionary(grouping: shown) { LibraryIndex.sportCategory(of: $0) ?? "" }
-                    // Named sports in order, Other last.
-                    let names = groups.keys.sorted { $1.isEmpty || !$0.isEmpty && $0.localizedStandardCompare($1) == .orderedAscending }
+                    // Named sports in order, then Other ("").
+                    let names = groups.keys.filter { !$0.isEmpty }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+                        + (groups[""] == nil ? [] : [""])
+                    let selected = tab.flatMap { names.contains($0) ? $0 : nil } ?? names.first ?? ""
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 32) {
-                            ForEach(names, id: \.self) { name in
-                                VStack(alignment: .leading, spacing: 14) {
-                                    Text(name.isEmpty ? String(localized: "Other") : name).font(.title3.weight(.semibold))
-                                    LazyVGrid(columns: videoGrid, spacing: 28) {
-                                        ForEach(groups[name] ?? []) { MovieTile(movie: $0) }
-                                    }
-                                }
-                            }
+                        LazyVGrid(columns: videoGrid, spacing: 28) {
+                            ForEach(groups[selected] ?? []) { MovieTile(movie: $0) }
                         }
                         .padding(28)
+                    }
+                    .toolbar {
+                        if names.count > 1 {
+                            Picker("Sport", selection: Binding(get: { selected }, set: { tab = $0 })) {
+                                ForEach(names, id: \.self) { Text($0.isEmpty ? String(localized: "Other") : $0).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                        }
                     }
                 }
             }

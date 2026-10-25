@@ -248,12 +248,15 @@ public struct LibraryIndex: Sendable {
     private static let sportsFolders: Set<String> = ["sport", "sports"]
 
     /// The kind of sport: the item's genre (from its tags, Get Info or an agent),
-    /// else the folder right under the Sports folder ("Sports/Formula 1/…").
+    /// else the folder right under the Sports folder ("Sports/Formula 1/…"),
+    /// unless that folder is one event: dated ("…_27_02_14") or a match ("A vs B").
     public static func sportCategory(of item: MediaItem) -> String? {
         if let genre = item.genre { return genre }
         let folders = item.url.deletingLastPathComponent().pathComponents
         guard let sports = folders.lastIndex(where: { sportsFolders.contains($0.lowercased()) }), sports + 1 < folders.count else { return nil }
-        return folders[sports + 1]
+        let folder = folders[sports + 1]
+        let isEvent = folder.range(of: #"\d{1,2}[._-]\d{1,2}[._-]\d{2,4}|\bvs\.?\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        return isEvent ? nil : folder
     }
 
     /// Adult videos shorter than this are clips; longer ones are full videos.
