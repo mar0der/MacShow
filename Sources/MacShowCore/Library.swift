@@ -29,6 +29,11 @@ public final class Library {
     public private(set) var scanningFolder: String?
     public private(set) var scanProgress: ScanProgress?
     public var foldersWaiting: Int { jobs.count }
+    /// The folder being scanned is marked Adult: it isn't named on screen while
+    /// adult content is hidden, nor ever to agents.
+    public var scanningAdultFolder: Bool {
+        scanningFolder.map { FolderRules(folderRules).kind(for: URL(fileURLWithPath: $0).canonicalPath) == .adult } ?? false
+    }
     /// Goes up each time `index` is replaced; cheap to watch for "the library changed".
     public private(set) var generation = 0
     /// Details changed with Get Info, by path (already applied to `index`).

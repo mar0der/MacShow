@@ -66,7 +66,7 @@ enum AgentTools {
                     "music_videos": .number(Double(index.musicVideos.count)), "home_videos": .number(Double(index.homeVideos.count)),
                     "sports": .number(Double(index.sports.count)), "documentaries": .number(Double(index.documentaries.count)),
                     "scanning": library.scanningFolder.map { folder in
-                        .object(["folder": .string(folder), "done": library.scanProgress.map { .number(Double($0.done)) } ?? .null,
+                        .object(["folder": .string(library.scanningAdultFolder ? "a hidden folder" : folder), "done": library.scanProgress.map { .number(Double($0.done)) } ?? .null,
                                  "total": library.scanProgress.map { .number(Double($0.total)) } ?? .null,
                                  "folders_waiting": .number(Double(library.foldersWaiting))])
                     } ?? .null,

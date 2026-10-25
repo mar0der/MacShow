@@ -268,12 +268,13 @@ private struct ScanStatusView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .padding(12)
-        .help(library.scanningFolder ?? "")
+        .help(library.scanningAdultFolder && !library.showingAdult ? "" : library.scanningFolder ?? "")
     }
 
     /// "Scanning Music on Media", "Scanning ~/Movies"
     private var title: String {
         guard let path = library.scanningFolder else { return String(localized: "Updating library…") }
+        if library.scanningAdultFolder, !library.showingAdult { return String(localized: "Scanning a hidden folder") }
         let folder = URL(fileURLWithPath: path, isDirectory: true)
         let parts = folder.pathComponents
         if parts.count > 2, parts[1] == "Volumes" { return String(localized: "Scanning \(folder.lastPathComponent) on \(parts[2])") }
