@@ -231,3 +231,31 @@ struct NetworkFolderTests {
         #expect((try folder.resourceValues(forKeys: [.volumeURLForRemountingKey])).volumeURLForRemounting == nil)
     }
 }
+
+struct ProtectionBoxTests {
+    /// An MP4 box: 4-byte big-endian size, type, payload.
+    func box(_ type: String, _ payload: Data = Data()) -> Data {
+        let size = UInt32(8 + payload.count)
+        return Data([UInt8(size >> 24), UInt8(size >> 16 & 0xff), UInt8(size >> 8 & 0xff), UInt8(size & 0xff)]) + Data(type.utf8) + payload
+    }
+
+    func file(_ boxes: Data...) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("protection-\(UUID()).m4a")
+        try boxes.reduce(Data(), +).write(to: url)
+        return url
+    }
+
+    @Test func findsTheProtectionBoxInTheMovieHeaderWhereverItIs() throws {
+        let media = box("mdat", Data(count: 3 << 20))
+        let protected = box("moov", box("trak", box("sinf", box("frma", Data("mp4a".utf8)))))
+        // Header between two large boxes: neither the first nor the last 2 MB.
+        #expect(MetadataReader.containsProtectionBox(try file(box("ftyp", Data("M4A ".utf8)), media, protected, box("free", Data(count: 3 << 20)))))
+        #expect(MetadataReader.containsProtectionBox(try file(box("ftyp"), protected, media)))
+    }
+
+    @Test func ignoresProtectionLookalikesInTheMedia() throws {
+        // "sinf" with a plausible size inside the audio data is not a protection box.
+        let media = box("mdat", Data(count: 1000) + box("sinf", Data(count: 12)) + Data(count: 1000))
+        #expect(!MetadataReader.containsProtectionBox(try file(box("ftyp"), box("moov", box("trak")), media)))
+    }
+}

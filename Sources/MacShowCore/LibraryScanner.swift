@@ -15,6 +15,9 @@ public final class LibraryScanner: Sendable {
     private let readQueue = DispatchQueue(label: "MacShow.LibraryScanner.read", qos: .utility, attributes: .concurrent)
     private static let parallelReads = 6
     private static let batchSize = 500
+    /// On a slow network share a batch can take an hour; save at least this often
+    /// so new items show up as they're read and a quit doesn't lose them.
+    private static let saveInterval: Duration = .seconds(5)
 
     public init(database: LibraryDatabase, artwork: ArtworkStore) {
         self.database = database
@@ -44,6 +47,7 @@ public final class LibraryScanner: Sendable {
 
         await withTaskGroup(of: MediaItem?.self) { group in
             var batch: [MediaItem] = []
+            var lastSave = ContinuousClock.now
             var nextIndex = 0
             func startNextRead() {
                 guard nextIndex < pending.count else { return }
@@ -58,9 +62,10 @@ public final class LibraryScanner: Sendable {
             for _ in 0..<Self.parallelReads { startNextRead() }
             for await item in group {
                 if let item { batch.append(item) }
-                if batch.count >= Self.batchSize {
+                if batch.count >= Self.batchSize || (!batch.isEmpty && lastSave.duration(to: .now) >= Self.saveInterval) {
                     try? database.upsert(batch)
                     batch.removeAll()
+                    lastSave = .now
                 }
                 startNextRead()
             }
