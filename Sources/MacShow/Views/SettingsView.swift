@@ -23,6 +23,7 @@ struct LibrarySettings: View {
     @AppStorage(Library.fetchArtworkKey) private var fetchArtwork = true
     @AppStorage(ArtworkFetcher.tmdbKeyDefault) private var tmdbKey = ""
     @AppStorage(Library.fetchLyricsKey) private var fetchLyrics = true
+    @AppStorage(Library.fetchInfoKey) private var fetchInfo = true
 
     var body: some View {
         Form {
@@ -79,6 +80,13 @@ struct LibrarySettings: View {
                 Toggle("Download missing album artwork", isOn: $fetchArtwork)
             } footer: {
                 Text("Looks up covers for albums that have none on the iTunes Store. Only album and artist names are sent.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Section {
+                Toggle("Look up artist bios and book details", isOn: $fetchInfo)
+            } footer: {
+                Text("Artist pages show the start of their Wikipedia article; audiobooks get a description and, if they have none, a cover from Open Library. Only names are sent.")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 

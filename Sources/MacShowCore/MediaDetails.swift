@@ -100,6 +100,69 @@ extension ArtworkFetcher {
     }
 }
 
+extension ArtworkFetcher {
+    /// The opening of the artist's Wikipedia article (an article about a band or
+    /// musician, not an album or discography). Only the name is sent.
+    public func artistBio(_ name: String) async -> MediaDetails? {
+        var components = URLComponents(string: "https://en.wikipedia.org/w/api.php")!
+        components.queryItems = [
+            .init(name: "action", value: "query"), .init(name: "format", value: "json"),
+            .init(name: "generator", value: "search"), .init(name: "gsrsearch", value: name + " music"), .init(name: "gsrlimit", value: "5"),
+            .init(name: "prop", value: "extracts|description"), .init(name: "exintro", value: "1"),
+            .init(name: "explaintext", value: "1"), .init(name: "exsentences", value: "5"),
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue("MacShow/1.0 (https://github.com/mar0der/MacShow)", forHTTPHeaderField: "User-Agent")
+        guard let (data, reply) = try? await session.data(for: request), (reply as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return Self.artistBio(from: data, name: name)
+    }
+
+    static func artistBio(from data: Data, name: String) -> MediaDetails? {
+        struct Page: Decodable { var index: Int; var title: String; var description: String?; var extract: String? }
+        struct Query: Decodable { var pages: [String: Page] }
+        struct Response: Decodable { var query: Query? }
+        guard let pages = (try? JSONDecoder().decode(Response.self, from: data))?.query?.pages.values else { return nil }
+        let musical = ["band", "singer", "rapper", "musician", "group", "duo", "songwriter", "composer", "dj", "producer", "vocalist", "guitarist"]
+        let wanted = normalize(name)
+        let page = pages.sorted { $0.index < $1.index }.first { page in
+            let description = (page.description ?? "").lowercased()
+            let notAWork = !description.contains("album") && !description.contains("song by") && !description.contains("discography")
+            // "Lamb of God (band)" → "lambofgod"
+            return normalize(page.title) == wanted && notAWork && musical.contains { description.contains($0) }
+        }
+        guard let page, let extract = page.extract, !extract.isEmpty else { return nil }
+        return MediaDetails(title: page.title, overview: extract, genres: page.description.map { [$0] } ?? [])
+    }
+
+    /// A book's description, first year and cover from Open Library (no account).
+    public func bookDetails(title: String, author: String?) async -> MediaDetails? {
+        var search = URLComponents(string: "https://openlibrary.org/search.json")!
+        search.queryItems = [.init(name: "title", value: title), .init(name: "limit", value: "1"),
+                             .init(name: "fields", value: "key,title,author_name,cover_i,first_publish_year")]
+            + (author.map { [URLQueryItem(name: "author", value: $0)] } ?? [])
+        struct Doc: Decodable { var key: String; var title: String; var author_name: [String]?; var cover_i: Int?; var first_publish_year: Int? }
+        struct Docs: Decodable { var docs: [Doc] }
+        guard let url = search.url, let (data, reply) = try? await session.data(from: url), (reply as? HTTPURLResponse)?.statusCode == 200,
+              let doc = try? JSONDecoder().decode(Docs.self, from: data).docs.first
+        else { return nil }
+        var details = MediaDetails(title: doc.title, year: doc.first_publish_year, makers: doc.author_name ?? [],
+                                   poster: doc.cover_i.flatMap { URL(string: "https://covers.openlibrary.org/b/id/\($0)-L.jpg") })
+        if let workURL = URL(string: "https://openlibrary.org\(doc.key).json"),
+           let (work, workReply) = try? await session.data(from: workURL), (workReply as? HTTPURLResponse)?.statusCode == 200 {
+            details.overview = Self.bookDescription(from: work)
+        }
+        return details
+    }
+
+    /// Open Library's description is either text or {"value": text}.
+    static func bookDescription(from data: Data) -> String? {
+        guard let work = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let text = (work["description"] as? String) ?? ((work["description"] as? [String: Any])?["value"] as? String)
+        // Drop the "----------\nSee also…" tails Open Library descriptions often carry.
+        return text.map { $0.components(separatedBy: "\n----------").first ?? $0 }?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 extension LibraryDatabase {
     func cachedDetails(_ key: String) throws -> MediaDetails? {
         try writer.read { db in

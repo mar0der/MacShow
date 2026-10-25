@@ -150,3 +150,18 @@ struct MediaDetailsTests {
         #expect(try database.cachedDetails("movie:x:0")?.year == 2000)
     }
 }
+
+struct ArtistAndBookInfoTests {
+    @Test func picksTheBandArticle() {
+        let json = #"{"query":{"pages":{"2":{"index":2,"title":"Lamb of God (album)","description":"2020 studio album by Lamb of God","extract":"An album."},"1":{"index":1,"title":"Lamb of God (band)","description":"American heavy metal band","extract":"Lamb of God is an American heavy metal band."},"3":{"index":3,"title":"Lamb of God","description":"Christian title for Jesus","extract":"A title."}}}}"#
+        let bio = ArtworkFetcher.artistBio(from: Data(json.utf8), name: "Lamb of God")
+        #expect(bio?.overview == "Lamb of God is an American heavy metal band.")
+        #expect(ArtworkFetcher.artistBio(from: Data(json.utf8), name: "Lamb") == nil)
+    }
+
+    @Test func readsBookDescriptions() {
+        #expect(ArtworkFetcher.bookDescription(from: Data(#"{"description":"A desert planet."}"#.utf8)) == "A desert planet.")
+        #expect(ArtworkFetcher.bookDescription(from: Data(#"{"description":{"type":"/type/text","value":"Spice.\n----------\nSee also: x"}}"#.utf8)) == "Spice.")
+        #expect(ArtworkFetcher.bookDescription(from: Data(#"{"title":"x"}"#.utf8)) == nil)
+    }
+}

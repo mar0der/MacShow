@@ -289,6 +289,8 @@ struct ArtistAvatar: View {
 struct ArtistDetailView: View {
     let artist: Artist
     @Environment(Library.self) private var library
+    @State private var bio: MediaDetails?
+    @State private var bioExpanded = false
 
     var body: some View {
         ScrollView {
@@ -302,6 +304,15 @@ struct ArtistDetailView: View {
                         .compactMap { $0 }.joined(separator: " · "),
                     circular: true, items: artist.songs.isEmpty ? artist.appearances : artist.songs
                 )
+                if let text = bio?.overview {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(text).lineLimit(bioExpanded ? nil : 3).frame(maxWidth: 720, alignment: .leading)
+                        HStack {
+                            Button(bioExpanded ? "Less" : "More") { bioExpanded.toggle() }.buttonStyle(.link)
+                            Text("From Wikipedia").font(.caption).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
                 if !artist.albums.isEmpty {
                     Text("Albums").font(.title3.weight(.semibold))
                     LazyVGrid(columns: albumGrid, spacing: 28) {
@@ -320,6 +331,7 @@ struct ArtistDetailView: View {
             .padding(28)
         }
         .navigationTitle(artist.name)
+        .task(id: artist.id) { bio = await library.bio(of: artist) }
     }
 }
 
