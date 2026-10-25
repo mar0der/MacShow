@@ -105,6 +105,7 @@ struct MacShowApp: App {
         Settings {
             SettingsView()
                 .environment(library)
+                .environment(player)
                 .preferredColorScheme(.dark)
         }
     }

@@ -5,6 +5,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             LibrarySettings().tabItem { Label("Library", systemImage: "folder") }
+            PlaybackSettings().tabItem { Label("Playback", systemImage: "hifispeaker") }
             ContentSettings().tabItem { Label("Content", systemImage: "eye.slash") }
             DuplicatesSettings().tabItem { Label("Duplicates", systemImage: "square.on.square") }
             AboutView().tabItem { Label("About", systemImage: "info.circle") }
@@ -76,6 +77,35 @@ struct LibrarySettings: View {
         panel.prompt = "Add to Library"
         guard panel.runModal() == .OK else { return }
         panel.urls.forEach(library.addFolder)
+    }
+}
+
+/// Bit-perfect output.
+struct PlaybackSettings: View {
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        @Bindable var player = player
+        Form {
+            Section {
+                Toggle("Bit-perfect output", isOn: $player.exclusiveAudio)
+                if let file = player.fileSampleRate {
+                    LabeledContent("Now playing") {
+                        let device = player.deviceSampleRate
+                        Text("file \(Self.kHz(file)), device \(device.map(Self.kHz) ?? "–")" + (device == file ? " ✓" : " (resampled by macOS)"))
+                            .foregroundStyle(device == file ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
+                    }
+                }
+            } footer: {
+                Text("macOS normally resamples everything to the rate set in Audio MIDI Setup. With this on, MacShow takes the audio device for itself and switches it to each file's own sample rate, so lossless and hi-res files reach your DAC untouched (keep the volume at 100% and the equalizer off for that). Other apps can't play sound while MacShow is playing.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    static func kHz(_ rate: Int) -> String {
+        String(format: "%g kHz", Double(rate) / 1000)
     }
 }
 

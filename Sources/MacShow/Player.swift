@@ -1,4 +1,5 @@
 import AppKit
+import CoreAudio
 import Libmpv
 import MacShowCore
 import Observation
@@ -30,6 +31,20 @@ final class Player {
         }
     }
     var isMuted = false { didSet { setFlag("mute", isMuted) } }
+    /// Bit-perfect output: mpv takes the audio device for itself and switches
+    /// it to each file's sample rate, instead of macOS resampling everything to
+    /// the rate set in Audio MIDI Setup. Other apps are silent meanwhile.
+    var exclusiveAudio = UserDefaults.standard.bool(forKey: "exclusiveAudio") {
+        didSet {
+            UserDefaults.standard.set(exclusiveAudio, forKey: "exclusiveAudio")
+            setString("audio-exclusive", exclusiveAudio ? "yes" : "no")
+            command("ao-reload")
+            refreshDeviceSampleRate()
+        }
+    }
+    /// Sample rates of the playing file and of the audio device it plays on.
+    private(set) var fileSampleRate: Int?
+    private(set) var deviceSampleRate: Int?
     /// Playback speed (audiobooks); pitch is kept.
     var speed: Double = 1 {
         didSet {
@@ -116,6 +131,7 @@ final class Player {
         ] {
             mpv_set_option_string(mpv, name, value)
         }
+        mpv_set_option_string(mpv, "audio-exclusive", exclusiveAudio ? "yes" : "no")
         mpv_request_log_messages(mpv, "error")
 
         let status = mpv_initialize(mpv)
@@ -128,6 +144,7 @@ final class Player {
             ("chapter-metadata/title", MPV_FORMAT_STRING), ("playlist-pos", MPV_FORMAT_INT64),
             ("track-list/count", MPV_FORMAT_INT64), ("sid", MPV_FORMAT_STRING), ("aid", MPV_FORMAT_STRING),
             ("chapter", MPV_FORMAT_INT64),
+            ("audio-params/samplerate", MPV_FORMAT_INT64), ("audio-out-params/samplerate", MPV_FORMAT_INT64),
         ] {
             mpv_observe_property(mpv, 0, name, format)
         }
@@ -415,6 +432,37 @@ final class Player {
         queueIndex = Int(string("playlist-pos") ?? "")
     }
 
+    /// The device switches rate (in exclusive mode) just after mpv's output starts.
+    private func refreshDeviceSampleRate() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            deviceSampleRate = Self.defaultDeviceSampleRate()
+        }
+    }
+
+    /// The nominal sample rate of the device MacShow plays on: the one it holds
+    /// exclusively (which drops out of the default-device lookup), else the default.
+    private static func defaultDeviceSampleRate() -> Int? {
+        func read<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, _ value: inout T) -> Bool {
+            var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+            var size = UInt32(MemoryLayout<T>.size)
+            return AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr
+        }
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size)
+        var devices = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &devices)
+        var device = devices.first { device in
+            var owner = pid_t(-1)
+            return read(device, kAudioDevicePropertyHogMode, &owner) && owner == getpid()
+        } ?? 0
+        if device == 0, !read(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, &device) { return nil }
+        var rate = Float64(0)
+        guard read(device, kAudioDevicePropertyNominalSampleRate, &rate), rate > 0 else { return nil }
+        return Int(rate)
+    }
+
     // MARK: mpv plumbing
 
     private func command(_ args: String...) {
@@ -559,6 +607,8 @@ final class Player {
             if let index = value as? Int, index >= 0, !queue.isEmpty { queueIndex = index }
         case "chapter":
             chapterIndex = (value as? Int).flatMap { $0 >= 0 ? $0 : nil }
+        case "audio-params/samplerate": fileSampleRate = value as? Int
+        case "audio-out-params/samplerate": refreshDeviceSampleRate()
         default: break
         }
         nowPlaying?.update()
