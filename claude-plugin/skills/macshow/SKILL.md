@@ -16,7 +16,7 @@ MacShow plays the user's own files. Its MCP tools work on items by id.
 3. **What's on:** `now_playing`. Transport: `pause`, `resume`, `next`, `previous`,
    `seek` (seconds, or `relative`), `set_volume` (0–100), `queue_add` (`next: true` to play after the current item).
 4. **Organizing** (refused when the user set MacShow to read-only for agents):
-   `playlist_create`, `playlist_add`, `set_category` (movie, episode, home_video,
+   `playlist_create`, `playlist_add`, `playlist_delete`, `set_category` (movie, episode, home_video,
    music_video, song, audiobook, automatic), `edit_info` (changes what MacShow shows,
    never the files), `rescan`.
 

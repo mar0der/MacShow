@@ -128,6 +128,15 @@ enum AgentTools {
                 library.add(try items(arguments), to: contents.playlist)
                 return "ok"
             },
+            MCPTool("playlist_delete", "Delete a playlist (by its id from library_summary). The songs stay in the library.",
+                    input: ["type": "object", "required": ["playlist_id"], "properties": ["playlist_id": ["type": "integer"]]],
+                    changesLibrary: true) { arguments in
+                guard let contents = library.playlists.first(where: { $0.playlist.id == Int64(arguments["playlist_id"]?.int ?? -1) }) else {
+                    throw MCPToolError("No playlist with that id. library_summary lists them.")
+                }
+                library.delete(contents.playlist)
+                return "ok"
+            },
             MCPTool("set_category", "Move items to a category: movie, episode, home_video, music_video, song or audiobook; automatic puts them back where MacShow would.",
                     input: ["type": "object", "required": ["ids", "category"], "properties": [
                         "ids": ids, "category": ["type": "string", "enum": ["movie", "episode", "home_video", "music_video", "song", "audiobook", "automatic"]],
