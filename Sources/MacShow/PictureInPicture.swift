@@ -46,7 +46,8 @@ final class PictureInPicture {
 
     /// Back into MacShow's window, full size.
     func close(returnTo player: Player) {
-        panel?.close()
+        // Not through closed(), which stops the video.
+        videoEnded()
         player.isVideoMinimized = false
         AppDelegate.openMainWindow?()
         NSApp.activate(ignoringOtherApps: true)
