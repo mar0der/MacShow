@@ -11,8 +11,9 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
 
 | | |
 |---|---|
-| ![A TV show with its seasons and episodes](docs/screenshots/show.png) | ![An album playing](docs/screenshots/album.png) |
-| ![Artists, with photos](docs/screenshots/artists.png) | ![An artist's page with bio and albums](docs/screenshots/artist.png) |
+| ![A TV show: backdrop, episodes with titles, summaries and stills](docs/screenshots/show.png) | ![An actor's page: biography, their movies in your library, and what they're known for](docs/screenshots/person.png) |
+| ![Live TV: free channels with what's on now and next](docs/screenshots/livetv.png) | ![Radio from around the world, by country](docs/screenshots/radio.png) |
+| ![An album playing](docs/screenshots/album.png) | ![Artists, with photos](docs/screenshots/artists.png) |
 
 ## What it does
 
@@ -24,6 +25,12 @@ asks you to prove you bought them. If a file isn't copy-protected, it plays.
 - **Video.** Movies, TV shows grouped into seasons, home videos, resume where you
   stopped, subtitle and audio-track menus. Keep watching in a corner while you
   browse; Up Next at the end of an episode, Skip Intro on intro chapters.
+- **Live TV.** Free channels streamed by the broadcasters themselves (Bulgarian
+  regional, news, music, sports…), and your own M3U playlists with their program
+  guide: what's on now and next, favorites, ⌘← / ⌘→ to switch channels.
+- **Radio.** Stations from all over the world through the free Radio Browser
+  directory: popular, by country, by genre, or search; favorites, and the song
+  that's playing.
 - **Audiobooks.** Chaptered M4B files or folders of MP3s, chapters, speed,
   sleep timer, bookmarks, resume to the second.
 - **Network folders.** Add folders from a NAS or shared Macs and PCs (Settings ›
