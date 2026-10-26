@@ -50,6 +50,10 @@ Copyright notice: see https://github.com/mpv-player/mpv/blob/v0.41.0/Copyright
 ===============================================================================
 Homepage:  https://ffmpeg.org/
 Version:   n9.0.2, configured with --enable-version3 (no --enable-gpl)
+           Built for MacShow with MPVKit's build script and a few more decoders
+           (msmpeg4, theora/vp3, dvvideo, cinepak); FFmpeg's source is unchanged.
+           How: Vendor/MPVKit/macshow-ffmpeg.patch and scripts/build-ffmpeg.sh in
+           https://github.com/mar0der/MacShow
 License:   LGPL-3.0-or-later
            Text: LGPL-3.0-or-later.txt
 Copyright notice: see https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/LICENSE.md

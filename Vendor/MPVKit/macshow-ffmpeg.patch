@@ -1,0 +1,43 @@
+--- a/Sources/BuildScripts/XCFrameworkBuild/main.swift	2026-10-24 22:46:05
++++ b/Sources/BuildScripts/XCFrameworkBuild/main.swift	2026-10-26 16:20:28
+@@ -18,7 +18,7 @@
+     try BuildASS().buildALL()
+ 
+     // libsmbclient
+-    try BuildSmbclient().buildALL()
++    // MacShow: skipped
+ 
+     // libbluray
+     try BuildBluray().buildALL()
+@@ -34,9 +34,9 @@
+     try BuildFFMPEG().buildALL()
+ 
+     // mpv
+-    try BuildUchardet().buildALL()
+-    try BuildLuaJIT().buildALL()
+-    try BuildMPV().buildALL()
++    // MacShow: skipped
++    // MacShow: skipped
++    // MacShow: skipped
+ } catch {
+     print(error.localizedDescription)
+     exit(1)
+@@ -601,7 +601,7 @@
+             arguments.append("--enable-neon")
+             arguments.append("--enable-asm")
+         }
+-        if platform == .macos, arch.executable {
++        if false, platform == .macos, arch.executable {  // MacShow: no programs needed
+             arguments.append("--enable-ffplay")
+             arguments.append("--enable-sdl2")
+             arguments.append("--enable-decoder=rawvideo")
+@@ -720,6 +720,9 @@
+         "--enable-decoder=mjpeg", "--enable-decoder=mjpegb", "--enable-decoder=mpeg*", "--enable-decoder=mts2",
+         "--enable-decoder=prores",
+         "--enable-decoder=mpeg4", "--enable-decoder=mpegvideo",
++        // MacShow: older formats still found in libraries (DivX 3 AVIs, Theora, DV camcorders, Cinepak).
++        "--enable-decoder=msmpeg4v1", "--enable-decoder=msmpeg4v2", "--enable-decoder=msmpeg4v3",
++        "--enable-decoder=theora", "--enable-decoder=vp3", "--enable-decoder=dvvideo", "--enable-decoder=cinepak",
+         "--enable-decoder=rv10", "--enable-decoder=rv20", "--enable-decoder=rv30", "--enable-decoder=rv40",
+         "--enable-decoder=snow", "--enable-decoder=svq3",
+         "--enable-decoder=tscc", "--enable-decoder=txd",

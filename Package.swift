@@ -6,8 +6,9 @@ let package = Package(
     name: "MacShow",
     platforms: [.macOS(.v14)],
     dependencies: [
-        // LGPL build of libmpv + FFmpeg (the GPL product is "MPVKit-GPL").
-        .package(url: "https://github.com/mpvkit/MPVKit.git", exact: "1.1.0-n9.0.2"),
+        // LGPL build of libmpv + FFmpeg: MPVKit 1.1.0-n9.0.2, with MacShow's own FFmpeg
+        // build (more decoders for old files); see Vendor/MPVKit.
+        .package(path: "Vendor/MPVKit"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
     ],
     targets: [
