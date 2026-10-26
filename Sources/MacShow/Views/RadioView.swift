@@ -87,17 +87,13 @@ struct RadioView: View {
                     }
                     .task { if countries.isEmpty { countries = await directory.countries() } }
                 case .genres:
-                    VStack(spacing: 0) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(RadioDirectory.genres, id: \.self) { name in
-                                    Button(name == "r&b" ? "R&B" : name.capitalized) { genre = name }
-                                        .buttonStyle(.bordered)
-                                        .tint(name == genre ? .accentColor : nil)
-                                }
-                            }
-                            .padding(.horizontal, 28).padding(.vertical, 12)
+                    // A list down the side, like countries: it fits any window.
+                    HStack(spacing: 0) {
+                        List(RadioDirectory.genres, id: \.self, selection: Binding(get: { genre }, set: { if let name = $0 { genre = name } })) { name in
+                            Text(name == "r&b" ? "R&B" : name.capitalized).tag(name)
                         }
+                        .frame(width: 200)
+                        Divider()
                         stations("genre:" + genre) { await directory.stations(genre: genre) }
                     }
                 }
