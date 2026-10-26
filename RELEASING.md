@@ -5,6 +5,17 @@ signed ad-hoc: it runs on the Mac that built it, but other Macs will warn that
 it can't be checked for malicious software. Making it open cleanly everywhere
 needs a paid Apple Developer account.
 
+## Version
+
+Versions are `YY.WW.X`: the year and ISO week of the release, and which release
+of that week it is, from 1 (`26.44.1`, then `26.44.2`, then `26.45.1`), so a
+version says how fresh it is. Set it before building, then tag the release with it:
+
+```bash
+VERSION=$(scripts/set-version.sh)   # writes it and the build number into Info.plist
+git commit -am "Version $VERSION" && git tag "v$VERSION"
+```
+
 ## 1. Developer ID signing
 
 1. In the Apple Developer portal, create a **Developer ID Application** certificate
