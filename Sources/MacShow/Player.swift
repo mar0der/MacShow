@@ -172,6 +172,13 @@ final class Player {
     private(set) var bufferingPercent = 0
     /// From starting a file until its first frame (or sound) plays.
     private(set) var isOpening = false
+    /// The video track mpv is showing ("1", "no"…), as it last reported.
+    @ObservationIgnored private var videoTrack: String?
+    /// A picture in a format MacShow's FFmpeg has no decoder for ("msmpeg4v3"):
+    /// the sound plays, and the screen says why there's no picture.
+    private(set) var undecodableVideo: String?
+    /// A video whose picture can't be decoded still gets the video screen, to say why.
+    var hasUndecodablePicture: Bool { undecodableVideo != nil && currentItem?.isVideo == true }
     /// A video being opened: its screen shows straight away, with a spinner, not
     /// only once mpv has the file open (seconds, on a slow network share).
     var isOpeningVideo: Bool {
@@ -232,7 +239,7 @@ final class Player {
             ("track-list/count", MPV_FORMAT_INT64), ("sid", MPV_FORMAT_STRING), ("aid", MPV_FORMAT_STRING),
             ("chapter", MPV_FORMAT_INT64),
             ("audio-params/samplerate", MPV_FORMAT_INT64), ("audio-out-params/samplerate", MPV_FORMAT_INT64),
-            ("metadata/by-key/icy-title", MPV_FORMAT_STRING),
+            ("metadata/by-key/icy-title", MPV_FORMAT_STRING), ("vid", MPV_FORMAT_STRING),
             ("demuxer-cache-time", MPV_FORMAT_DOUBLE), ("paused-for-cache", MPV_FORMAT_FLAG), ("cache-buffering-state", MPV_FORMAT_INT64),
         ] {
             mpv_observe_property(mpv, 0, name, format)
@@ -451,7 +458,9 @@ final class Player {
     /// appears afterwards, that output never reaches the screen. Re-selecting
     /// the video track makes mpv build it again on the now-visible layer.
     func reattachVideoOutput() {
-        guard let track = string("vid"), track != "no" else { return }
+        // Nothing to reattach while a file opens (mpv attaches it once it's open);
+        // the track is the one mpv last reported, not asked for (that would wait).
+        guard !isOpening, let track = videoTrack, track != "no" else { return }
         setString("vid", "no")
         setString("vid", track)
     }
@@ -702,24 +711,32 @@ final class Player {
 
     // MARK: mpv plumbing
 
+    // Commands and settings are sent without waiting for them to run: mpv still
+    // runs them in order, but the main thread never waits on mpv's core, which
+    // may be busy reading a file over a slow network (the window would freeze).
+
     private func command(_ args: String...) {
         var cargs: [UnsafePointer<CChar>?] = args.map { UnsafePointer(strdup($0)) } + [nil]
         defer { cargs.forEach { free(UnsafeMutablePointer(mutating: $0)) } }
-        mpv_command(mpv, &cargs)
+        mpv_command_async(mpv, 0, &cargs)
     }
 
     private func setDouble(_ name: String, _ value: Double) {
         var value = value
-        mpv_set_property(mpv, name, MPV_FORMAT_DOUBLE, &value)
+        mpv_set_property_async(mpv, 0, name, MPV_FORMAT_DOUBLE, &value)
     }
 
     private func setFlag(_ name: String, _ value: Bool) {
         var flag: Int32 = value ? 1 : 0
-        mpv_set_property(mpv, name, MPV_FORMAT_FLAG, &flag)
+        mpv_set_property_async(mpv, 0, name, MPV_FORMAT_FLAG, &flag)
     }
 
     private func setString(_ name: String, _ value: String) {
-        mpv_set_property_string(mpv, name, value)
+        var value = value
+        value.withCString { text in
+            var pointer: UnsafePointer<CChar>? = text
+            _ = mpv_set_property_async(mpv, 0, name, MPV_FORMAT_STRING, &pointer)
+        }
     }
 
     func string(_ name: String) -> String? { Self.string(mpv, name) }
@@ -819,7 +836,7 @@ final class Player {
                     }
                 }
             case MPV_EVENT_START_FILE:
-                DispatchQueue.main.async { MainActor.assumeIsolated { self.isOpening = true; self.streamTitle = nil } }
+                DispatchQueue.main.async { MainActor.assumeIsolated { self.isOpening = true; self.streamTitle = nil; self.undecodableVideo = nil } }
             case MPV_EVENT_PLAYBACK_RESTART:  // after a seek or a new file starts
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
@@ -829,7 +846,14 @@ final class Player {
                 }
             case MPV_EVENT_LOG_MESSAGE:
                 let message = event.data.assumingMemoryBound(to: mpv_event_log_message.self).pointee
-                FileHandle.standardError.write(Data("[mpv \(String(cString: message.prefix))] \(String(cString: message.text))".utf8))
+                let text = String(cString: message.text)
+                FileHandle.standardError.write(Data("[mpv \(String(cString: message.prefix))] \(text)".utf8))
+                // "Failed to initialize a decoder for codec 'msmpeg4v3'." from the video decoder.
+                if String(cString: message.prefix) == "vd", let start = text.range(of: "decoder for codec '")?.upperBound,
+                   let end = text[start...].firstIndex(of: "'") {
+                    let name = String(text[start..<end])
+                    DispatchQueue.main.async { MainActor.assumeIsolated { self.undecodableVideo = name } }
+                }
             default:
                 break
             }
@@ -880,6 +904,7 @@ final class Player {
             }
             return
         case "duration": duration = value as? Double ?? 0
+        case "vid": videoTrack = value as? String
         case "metadata/by-key/icy-title":
             streamTitle = (value as? String).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
             nowPlaying?.update()

@@ -149,6 +149,19 @@ struct VideoPlayerView: View {
             // Not the last frame of what played before: the new title's own picture.
             if player.isOpening { LoadingPicture() }
 
+            if let codec = player.undecodableVideo, !player.isOpening {
+                let name = ["msmpeg4v1": "DivX 3", "msmpeg4v2": "DivX 3", "msmpeg4v3": "DivX 3", "theora": "Theora",
+                            "dvvideo": "DV", "cinepak": "Cinepak"][codec] ?? codec
+                VStack(spacing: 8) {
+                    Image(systemName: "eye.slash").font(.largeTitle)
+                    Text("No picture: this video is in \(name), which MacShow can't show yet. The sound plays.")
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 420)
+                .allowsHitTesting(false)
+            }
+
             if player.isBuffering || player.isOpening {
                 VStack(spacing: 10) {
                     ProgressView().controlSize(.large)

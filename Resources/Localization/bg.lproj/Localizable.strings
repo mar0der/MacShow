@@ -434,3 +434,4 @@
 "Search stations" = "Търсене на станции";
 "Show" = "Показване";
 "Stations you play show up here." = "Тук се появяват станциите, които слушате.";
+"No picture: this video is in %@, which MacShow can't show yet. The sound plays." = "Няма картина: видеото е във формат %@, който MacShow все още не може да показва. Звукът върви.";

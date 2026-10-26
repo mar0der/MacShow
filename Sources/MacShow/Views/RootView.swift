@@ -98,7 +98,7 @@ struct RootView: View {
         // Videos play in this window, TV-app style. Back (or Esc) returns here,
         // with the video carrying on in a corner.
         Group {
-            if player.isVideo || player.isOpeningVideo, !player.isVideoMinimized {
+            if player.isVideo || player.isOpeningVideo || player.hasUndecodablePicture, !player.isVideoMinimized {
                 VideoPlayerView()
             } else {
                 browser.overlay(alignment: .bottomTrailing) {
