@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 
 /// How far a scan is: `done` of the `total` new or changed files read, and
 /// the name of the one just read.
@@ -92,6 +93,16 @@ public final class LibraryScanner: Sendable {
         try? database.deleteItems(paths: missing)
         result.removed = missing.count
         return result
+    }
+
+    /// Indexes one file now, without listing its folder; nil if it can't be read.
+    public func index(file url: URL) -> MediaItem? {
+        let url = URL(fileURLWithPath: url.canonicalPath)
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+              let item = readItem(url, size: Int64(values.fileSize ?? 0), modified: values.contentModificationDate?.timeIntervalSince1970 ?? 0),
+              (try? database.upsert([item])) != nil
+        else { return nil }
+        return try? database.writer.read { db in try MediaItem.filter(Column("path") == url.path).fetchOne(db) }
     }
 
     private typealias MediaFile = (url: URL, size: Int64, modified: Double)

@@ -9,6 +9,7 @@ struct SettingsView: View {
             ContentSettings().tabItem { Label("Content", systemImage: "eye.slash") }
             LiveTVSettings().tabItem { Label("Live TV", systemImage: "antenna.radiowaves.left.and.right") }
             AgentSettings().tabItem { Label("Agents", systemImage: "sparkles") }
+            ModernizeSettings().tabItem { Label("Modernize", systemImage: "wand.and.stars") }
             DuplicatesSettings().tabItem { Label("Duplicates", systemImage: "square.on.square") }
             AboutView().tabItem { Label("About", systemImage: "info.circle") }
         }

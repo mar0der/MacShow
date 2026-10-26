@@ -10,6 +10,7 @@ struct MacShowApp: App {
     @State private var player: Player
     @State private var liveTV: LiveTV
     @State private var radio: Radio
+    @State private var modernizer: Modernizer
     @AppStorage("showInMenuBar") private var showInMenuBar = true
 
     init() {
@@ -31,6 +32,7 @@ struct MacShowApp: App {
         let radio = Radio()
         player.radio = radio
         _radio = State(initialValue: radio)
+        _modernizer = State(initialValue: Modernizer(library: library, player: player))
         Task { await liveTV.load() }
         VideoScreen.installKeys(for: player)
         AgentControl.shared.configure(library: library, player: player, liveTV: liveTV, radio: radio)
@@ -54,6 +56,7 @@ struct MacShowApp: App {
                 .environment(player)
                 .environment(liveTV)
                 .environment(radio)
+                .environment(modernizer)
                 .preferredColorScheme(.dark)
                 .onAppear {
                     // `MacShow <file>` plays that file on launch. Only a media file: the
@@ -160,6 +163,7 @@ struct MacShowApp: App {
             SettingsView()
                 .environment(library)
                 .environment(player)
+                .environment(modernizer)
                 .environment(liveTV)
                 .preferredColorScheme(.dark)
         }

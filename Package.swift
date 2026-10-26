@@ -29,7 +29,7 @@ let package = Package(
         .testTarget(
             name: "MacShowCoreTests",
             dependencies: ["MacShowCore"],
-            resources: [.copy("Fixtures")]
+            resources: [.copy("Fixtures"), .copy("ConvertFixtures")]
         ),
     ]
 )

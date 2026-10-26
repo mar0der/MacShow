@@ -354,7 +354,9 @@ public final class Library {
                           url.startAccessingSecurityScopedResource()
                     else { continue }
                     accessed.append(folder.path)
-                    if stale, let fresh = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil) {
+                    // Keeps write access where it was given (Modernize), read-only otherwise.
+                    if stale, let fresh = (try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil))
+                        ?? (try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil)) {
                         try? database.updateBookmark(fresh, forFolder: folder.path)
                     }
                 }
@@ -399,6 +401,67 @@ public final class Library {
         if wasExcluded, FolderRules(folderRules).kind(for: path) != .excluded {
             enqueue(.scan(Classifier.isMediaFile(url) ? url.deletingLastPathComponent().canonicalPath : path))
         }
+    }
+
+    // MARK: Modernize
+
+    /// Videos worth converting to HEVC (Adult items never: `index` leaves them out).
+    public var modernizeCandidates: [Modernize.Candidate] {
+        Modernize.candidates(in: index.movies + index.documentaries + index.sports + index.homeVideos + index.shows.flatMap(\.episodes))
+    }
+
+    /// The watched folder `path` is in.
+    public func watchedFolder(containing path: String) -> WatchedFolder? {
+        folders.filter { path.hasPrefix($0.path + "/") }.max { $0.path.count < $1.path.count }
+    }
+
+    /// Whether MacShow may write in `folder`: it makes a test file and removes it.
+    public nonisolated static func canWrite(in folder: URL) -> Bool {
+        let probe = folder.appendingPathComponent(".macshow-write-test-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: probe.path, contents: Data()) else { return false }
+        try? FileManager.default.removeItem(at: probe)
+        return true
+    }
+
+    /// Keeps the write access you gave a watched folder (`url` is from an Open panel).
+    public func allowWriting(to folder: WatchedFolder, url: URL) {
+        guard let bookmark = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) else { return }
+        _ = url.startAccessingSecurityScopedResource()
+        try? database.updateBookmark(bookmark, forFolder: folder.path)
+        folders = (try? database.watchedFolders()) ?? folders
+    }
+
+    /// After a conversion: indexes `output`, moves what MacShow keeps about the
+    /// originals to it, then leaves the originals out of the library (Never Scan;
+    /// they stay on disk until `removeOriginals`). Nil if `output` can't be read.
+    public func adoptConversion(of originals: [MediaItem], output: URL) async -> MediaItem? {
+        // Right away: a folder scan could wait behind long scans of network shares.
+        let scanner = scanner
+        guard let converted = await Task.detached(operation: { scanner.index(file: output) }).value else { return nil }
+        try? database.carryOver(from: originals, to: converted)
+        positions = (try? await database.writer.read(LibraryDatabase.positions)) ?? positions
+        playStats = (try? database.playStats()) ?? playStats
+        favorites = (try? database.favorites()) ?? favorites
+        for original in originals { setRule(.excluded, for: original.url) }
+        return converted
+    }
+
+    /// Deletes originals kept after a conversion (to the Trash when the disk has
+    /// one) and the rules that hid them. Returns the ones that couldn't go.
+    public func removeOriginals(_ paths: [String]) -> [String] {
+        var failed: [String] = []
+        for path in paths {
+            let url = URL(fileURLWithPath: path, isDirectory: false)
+            do {
+                if (try? FileManager.default.trashItem(at: url, resultingItemURL: nil)) == nil { try FileManager.default.removeItem(at: url) }
+                try? database.setFolderRule(nil, for: url.canonicalPath)
+            } catch {
+                failed.append(path)
+            }
+        }
+        folderRules = (try? database.folderRules()) ?? []
+        refresh()
+        return failed
     }
 
     /// Moves items to a category (nil: back to where MacShow would put them).

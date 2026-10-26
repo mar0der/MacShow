@@ -25,6 +25,7 @@ struct MovieDetailView: View {
                     if let cast = details?.cast, !cast.isEmpty { CastRow(cast: cast) }
                     Text([movie.formatInfo, movie.url.lastPathComponent].filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.caption).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+                    ModernizeOffer(movie: movie)
                 }
                 .padding(.horizontal, 28)
             }
