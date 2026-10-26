@@ -21,13 +21,44 @@ struct RadioView: View {
     @AppStorage("radioTab") private var tab: Tab = .popular
     @AppStorage("radioCountry") private var country = Locale.current.region?.identifier ?? "BG"
     @AppStorage("radioGenre") private var genre = "pop"
+    /// What's typed, and what's searched: the same, a moment after typing stops.
     @State private var search = ""
+    @State private var query = ""
     @State private var found: [String: [RadioStation]] = [:]
     @State private var countries: [RadioCountry] = []
     private let directory = RadioDirectory()
 
     var body: some View {
-        let words = search.trimmingCharacters(in: .whitespaces)
+        let words = query
+        // The tabs and search sit in the page, not the window toolbar: toolbar
+        // items are rebuilt as the page changes, and the field lost its focus.
+        VStack(spacing: 0) {
+            HStack {
+                Picker("Show", selection: $tab) {
+                    ForEach(Tab.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .disabled(!words.isEmpty)
+                Spacer()
+                TextField("Search Stations", text: $search, prompt: Text("Search stations"))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 10)
+            content(words)
+        }
+        .navigationTitle("Radio")
+        .task(id: search) {
+            try? await Task.sleep(for: .milliseconds(400))
+            if !Task.isCancelled { query = search.trimmingCharacters(in: .whitespaces) }
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ words: String) -> some View {
         Group {
             if !words.isEmpty {
                 stations("search:" + words) { await directory.search(words) }
@@ -71,17 +102,6 @@ struct RadioView: View {
                     }
                 }
             }
-        }
-        .navigationTitle("Radio")
-        .toolbar {
-            Picker("Show", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .disabled(!words.isEmpty)
-            TextField("Search Stations", text: $search, prompt: Text("Search stations"))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 200)
         }
     }
 
