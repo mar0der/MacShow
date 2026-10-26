@@ -479,7 +479,7 @@ struct PlayShuffleButtons: View {
     var body: some View {
         let playable = items.filter { !$0.isProtected }
         HStack(spacing: 10) {
-            Button { player.play(playable) } label: { Label("Play", systemImage: "play.fill").frame(minWidth: 70) }
+            PlayPauseButton(items: playable) { player.play(playable) } label: { Label("Play", systemImage: "play.fill").frame(minWidth: 70) }
                 .buttonStyle(.borderedProminent)
             Button { player.play(playable.shuffled()) } label: { Label("Shuffle", systemImage: "shuffle").frame(minWidth: 70) }
                 .buttonStyle(.bordered)

@@ -72,6 +72,7 @@ public final class Library {
     @ObservationIgnored private var folderState: Task<Void, Never>?
     @ObservationIgnored private var volumeObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    @ObservationIgnored private var videoArtworkTask: Task<Void, Never>?
     /// Network folders we've tried to reconnect since the last rescan.
     @ObservationIgnored private var reconnectTried: Set<String> = []
     @ObservationIgnored private var networkRescan: Task<Void, Never>?
@@ -169,7 +170,7 @@ public final class Library {
                     self.playlists = snapshot.1
                     self.edits = snapshot.2
                     self.generation += 1
-                    if !self.isScanning { self.fetchMissingArtwork() }
+                    if !self.isScanning { self.fetchMissingArtwork(); self.fetchMissingVideoArtwork() }
                 }
                 self.refreshRunning = false
                 if self.refreshPending {
@@ -329,6 +330,7 @@ public final class Library {
             scanningFolder = nil
             scanProgress = nil
             fetchMissingArtwork()
+            fetchMissingVideoArtwork()
         }
     }
 
@@ -791,6 +793,34 @@ public final class Library {
             }
             saveFound()
             await self?.artworkLookupsFinished()
+        }
+    }
+
+    /// Movies, documentaries and shows without a picture get their TMDB backdrop
+    /// (when there's a TMDB key), looked up once each. Never sports, home videos
+    /// or Adult items (which `index` leaves out), never over a picture you chose.
+    private func fetchMissingVideoArtwork() {
+        guard videoArtworkTask == nil, UserDefaults.standard.string(forKey: ArtworkFetcher.tmdbKeyDefault)?.isEmpty == false else { return }
+        let tried = (try? database.artworkLookups()) ?? []
+        let videos = (index.movies + index.documentaries).filter { $0.artworkKey == nil && !tried.contains("video:" + $0.path) }
+            .map { (lookup: "video:" + $0.path, item: $0, paths: [$0.path]) }
+        let shows = index.shows.filter { $0.artworkKey == nil && !tried.contains("show:" + $0.id) }
+            .map { (lookup: "show:" + $0.id, item: $0.episodes[0], paths: $0.episodes.map(\.path)) }
+        guard !videos.isEmpty || !shows.isEmpty else { return }
+        let database = database, artwork = artwork
+        videoArtworkTask = Task { [weak self] in
+            for entry in videos + shows {
+                guard let self, !Task.isCancelled else { break }
+                if let backdrop = await self.details(for: entry.item)?.backdrop,
+                   let (data, reply) = try? await URLSession.shared.data(from: backdrop), (reply as? HTTPURLResponse)?.statusCode == 200,
+                   let key = artwork.store(data) {
+                    try? database.setArtworkKey(key, forPaths: entry.paths)
+                }
+                // Found or not, it isn't asked again (a picture you remove stays removed).
+                try? database.recordArtworkLookup(albumId: entry.lookup)
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+            self?.videoArtworkTask = nil
         }
     }
 

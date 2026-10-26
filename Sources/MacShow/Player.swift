@@ -309,6 +309,11 @@ final class Player {
         setFlag("pause", false)
     }
 
+    /// One of `items` is loaded now, playing or paused.
+    func isCurrent(among items: [MediaItem]) -> Bool {
+        currentItem.map { current in items.contains { $0.path == current.path } } ?? false
+    }
+
     /// Plays a radio station; Next and Previous then go through `stations`.
     func playRadio(_ station: RadioStation, in stations: [RadioStation]) {
         savePosition()

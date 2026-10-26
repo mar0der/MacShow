@@ -418,7 +418,7 @@ struct ShowDetailView: View {
                 Text(metadata).foregroundStyle(.secondary)
                 if let next = nextUp {
                     HStack(spacing: 10) {
-                        Button { play(next) } label: {
+                        PlayPauseButton(items: show.episodes) { play(next) } label: {
                             Label(resumeLabel(next), systemImage: "play.fill").frame(minWidth: 90)
                         }
                         .buttonStyle(.borderedProminent)

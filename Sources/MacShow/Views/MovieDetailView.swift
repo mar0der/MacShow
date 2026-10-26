@@ -54,7 +54,7 @@ struct MovieDetailView: View {
                 Text(metadata).foregroundStyle(.secondary)
                 if let tagline = details?.tagline { Text(tagline).italic().foregroundStyle(.secondary) }
                 HStack(spacing: 10) {
-                    Button { player.play([movie], showVideo: true) } label: {
+                    PlayPauseButton(items: [movie]) { player.play([movie], showVideo: true) } label: {
                         Label(saved?.isResumable == true ? LocalizedStringKey("Resume") : LocalizedStringKey("Play"), systemImage: "play.fill").frame(minWidth: 90)
                     }
                     .buttonStyle(.borderedProminent)

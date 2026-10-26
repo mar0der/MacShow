@@ -214,3 +214,24 @@ struct SleepTimerMenu: View {
         }
     }
 }
+
+/// A page's Play (or Resume) button, which becomes Pause while one of `items`
+/// is playing and Resume, carrying on where it is, while it's paused.
+struct PlayPauseButton<Content: View>: View {
+    let items: [MediaItem]
+    let play: () -> Void
+    @ViewBuilder let label: () -> Content
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        if player.isCurrent(among: items) {
+            Button { player.togglePause() } label: {
+                Label(player.isPaused ? LocalizedStringKey("Resume") : LocalizedStringKey("Pause"),
+                      systemImage: player.isPaused ? "play.fill" : "pause.fill")
+                    .frame(minWidth: 90)
+            }
+        } else {
+            Button(action: play, label: label)
+        }
+    }
+}
