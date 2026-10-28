@@ -74,6 +74,15 @@ struct SourceFiltered<Content: View>: View {
     /// "This Mac", "SSD", or "Media on dspeter" for a network share.
     private func name(of source: String) -> String {
         guard source != "/" else { return String(localized: "This Mac") }
+        
+        // If the source already contains network info (e.g., "media@192.168.0.202"), format it nicely.
+        if let atIndex = source.firstIndex(of: "@") {
+            let shareName = String(source[..<atIndex])
+            let hostPart = String(source[source.index(after: atIndex)...])
+            return String(localized: "\(shareName) on \(hostPart)")
+        }
+        
+        // Legacy format: look up the host from watched folders (for /Volumes/ shares).
         let host = library.folders.lazy
             .first { $0.path.hasPrefix("/Volumes/\(source)/") && $0.remountURL != nil }
             .flatMap { $0.remountURL.flatMap(URL.init(string:))?.host?.split(separator: ".").first }

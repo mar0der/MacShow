@@ -249,6 +249,30 @@ struct NetworkFolderTests {
     }
 }
 
+struct SourceDetectionTests {
+    @Test func volumesMountsAreDetected() {
+        let item = makeItem("/Volumes/Media/Movies/film.mkv")
+        #expect(item.source == "Media")
+    }
+    
+    @Test func localFilesHaveNoSource() {
+        let local = makeItem("/Users/me/Movies/film.mkv")
+        #expect(local.source == nil)
+    }
+    
+    @Test func rootFilesHaveNoSource() {
+        let root = makeItem("/tmp/test.mkv")
+        #expect(root.source == nil)
+    }
+    
+    @Test func sourceIsConsistentForSameMountPoint() {
+        // Items on the same mount should have the same source.
+        let item1 = makeItem("/Volumes/Media/Movies/a.mkv")
+        let item2 = makeItem("/Volumes/Media/TV/b.mkv")
+        #expect(item1.source == item2.source)
+    }
+}
+
 struct ProtectionBoxTests {
     /// An MP4 box: 4-byte big-endian size, type, payload.
     func box(_ type: String, _ payload: Data = Data()) -> Data {
