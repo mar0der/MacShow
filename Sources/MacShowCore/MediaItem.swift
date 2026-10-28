@@ -102,32 +102,48 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     
     /// Detects the source for a path given its mount point.
     private static func detectSource(for path: String, mountPoint: String) -> String? {
-        // Root filesystem is "this Mac"; everything else is its own source.
+        // Root filesystem is always "this Mac".
         guard mountPoint != "/" else {
             return nil
         }
         
-        let url = URL(fileURLWithPath: path, isDirectory: false)
-        
-        // Try getting volume information from URL resource values.
-        if let values = try? url.resourceValues(forKeys: [.volumeURLForRemountingKey, .volumeNameKey]),
-           let volumeName = values.volumeName,
-           values.volumeURLForRemounting != nil {
-            // This is a network share: use volume name plus any useful network info.
-            return sourceNameFromVolume(volumeName, remountURL: values.volumeURLForRemounting)
+        // /Volumes/<name>: always return just the volume name for backward compatibility
+        // with saved hiddenSources, regardless of filesystem type.
+        let mountParts = mountPoint.split(separator: "/", omittingEmptySubsequences: true)
+        if mountParts.count >= 2, mountParts[0] == "Volumes" {
+            return String(mountParts[1])
         }
         
-        // Fall back to deriving from statfs info.
+        // Check filesystem type to distinguish network shares from internal volumes.
         var stat = statfs()
         guard statfs(path, &stat) == 0 else {
             return nil
         }
         
-        let volumeName = withUnsafeBytes(of: stat.f_mntfromname) { buffer in
+        let fsType = withUnsafeBytes(of: stat.f_fstypename) { buffer in
             String(cString: buffer.bindMemory(to: CChar.self).baseAddress!)
         }
         
-        return sourceNameFromMount(mountPoint: mountPoint, fromName: volumeName)
+        // Network filesystems (mounted anywhere except /Volumes/) are sources.
+        let networkTypes = ["smbfs", "nfs", "afpfs", "webdav", "cifs", "acfs"]
+        if networkTypes.contains(fsType) {
+            let url = URL(fileURLWithPath: path, isDirectory: false)
+            if let values = try? url.resourceValues(forKeys: [.volumeURLForRemountingKey, .volumeNameKey]),
+               let volumeName = values.volumeName,
+               values.volumeURLForRemounting != nil {
+                // Network share: use volume name plus network info.
+                return sourceNameFromVolume(volumeName, remountURL: values.volumeURLForRemounting)
+            }
+            
+            // Fall back to mount info for network filesystems.
+            let volumeName = withUnsafeBytes(of: stat.f_mntfromname) { buffer in
+                String(cString: buffer.bindMemory(to: CChar.self).baseAddress!)
+            }
+            return sourceNameFromMount(mountPoint: mountPoint, fromName: volumeName)
+        }
+        
+        // Internal APFS volumes (like /System/Volumes/Data) are "this Mac".
+        return nil
     }
     
     /// Derives a human-readable source name from a volume name and remount URL.

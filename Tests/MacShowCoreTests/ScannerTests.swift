@@ -256,6 +256,7 @@ struct SourceDetectionTests {
     }
     
     @Test func localFilesHaveNoSource() {
+        // Local files on the root filesystem have no source.
         let local = makeItem("/Users/me/Movies/film.mkv")
         #expect(local.source == nil)
     }
@@ -263,6 +264,24 @@ struct SourceDetectionTests {
     @Test func rootFilesHaveNoSource() {
         let root = makeItem("/tmp/test.mkv")
         #expect(root.source == nil)
+    }
+    
+    @Test func dataVolumeFilesAreLocal() {
+        // On modern macOS, home folders live on the APFS Data volume at
+        // /System/Volumes/Data, which is still "this Mac" (not a separate source).
+        // Files there should return nil even though the mount point isn't "/".
+        let music = makeItem("/System/Volumes/Data/Users/me/Music/song.mp3")
+        let downloads = makeItem("/System/Volumes/Data/Users/me/Downloads/video.mp4")
+        #expect(music.source == nil)
+        #expect(downloads.source == nil)
+    }
+    
+    @Test func systemVolumesAreLocal() {
+        // Internal system volumes (Preboot, VM, Update, etc.) are "this Mac".
+        let preboot = makeItem("/System/Volumes/Preboot/file.bin")
+        let vm = makeItem("/System/Volumes/VM/sleepimage")
+        #expect(preboot.source == nil)
+        #expect(vm.source == nil)
     }
     
     @Test func sourceIsConsistentForSameMountPoint() {
@@ -286,6 +305,7 @@ struct SourceDetectionTests {
 struct SourceNameParsingTests {
     @Test func smbPathWithIPAddress() {
         // SMB mount from IP should keep the full IP address, not truncate at first dot.
+        // Non-Volumes mount points get network-aware names.
         let source = MediaItem.SourceCache.testSourceNameFromMount(
             mountPoint: "/Users/user/NAS/media",
             fromName: "//petar@192.168.0.202/media"
@@ -295,11 +315,12 @@ struct SourceNameParsingTests {
     
     @Test func smbPathWithHostname() {
         // SMB mount from hostname should shorten to first component.
+        // Non-Volumes mount points get network-aware names.
         let source = MediaItem.SourceCache.testSourceNameFromMount(
-            mountPoint: "/Volumes/Media",
-            fromName: "//macshow@dspeter.taild48c09.ts.net/Media"
+            mountPoint: "/Users/user/NAS/share",
+            fromName: "//macshow@dspeter.taild48c09.ts.net/share"
         )
-        #expect(source == "Media@dspeter")
+        #expect(source == "share@dspeter")
     }
     
     @Test func nfsPathWithIPAddress() {
@@ -321,12 +342,19 @@ struct SourceNameParsingTests {
     }
     
     @Test func volumesMountPoint() {
-        // /Volumes/<name> should just return the name.
+        // /Volumes/<name> always returns just the name for backward compatibility
+        // with saved hiddenSources AppStorage values.
         let source = MediaItem.SourceCache.testSourceNameFromMount(
             mountPoint: "/Volumes/Backup",
             fromName: "//server/Backup"
         )
         #expect(source == "Backup")
+        
+        let media = MediaItem.SourceCache.testSourceNameFromMount(
+            mountPoint: "/Volumes/Media",
+            fromName: "//macshow@dspeter.taild48c09.ts.net/Media"
+        )
+        #expect(media == "Media")
     }
     
     @Test func ipv4AddressRecognition() {
