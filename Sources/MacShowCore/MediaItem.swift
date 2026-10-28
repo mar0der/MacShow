@@ -55,19 +55,10 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
 
     /// The name albums are grouped and listed under.
     public var albumArtistOrArtist: String { albumArtist ?? artist ?? "Unknown Artist" }
-}
-
-extension MediaItem: FetchableRecord, MutablePersistableRecord {
-    public static let databaseTableName = "mediaItem"
-
-    public mutating func didInsert(_ inserted: InsertionSuccess) {
-        id = inserted.rowID
-    }
-}
-
-/// Caches source detection results per mount point to avoid repeated filesystem
-/// queries. Thread-safe for concurrent reads during library indexing.
-final class SourceCache: @unchecked Sendable {
+    
+    /// Caches source detection results per mount point to avoid repeated filesystem
+    /// queries. Thread-safe for concurrent reads during library indexing.
+    final class SourceCache: @unchecked Sendable {
     private var cache: [String: String?] = [:]
     private let lock = NSLock()
     
@@ -224,4 +215,13 @@ final class SourceCache: @unchecked Sendable {
         shortHostname(host)
     }
     #endif
+    }
+}
+
+extension MediaItem: FetchableRecord, MutablePersistableRecord {
+    public static let databaseTableName = "mediaItem"
+
+    public mutating func didInsert(_ inserted: InsertionSuccess) {
+        id = inserted.rowID
+    }
 }
