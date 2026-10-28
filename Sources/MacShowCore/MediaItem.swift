@@ -124,22 +124,19 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
             String(cString: buffer.bindMemory(to: CChar.self).baseAddress!)
         }
         
-        // Network filesystems (mounted anywhere except /Volumes/) are sources.
+        let fromName = withUnsafeBytes(of: stat.f_mntfromname) { buffer in
+            String(cString: buffer.bindMemory(to: CChar.self).baseAddress!)
+        }
+        
+        return detectSourceWithFsType(mountPoint: mountPoint, fsType: fsType, fromName: fromName)
+    }
+    
+    /// Detects the source given mount info. Separated for testability.
+    private static func detectSourceWithFsType(mountPoint: String, fsType: String, fromName: String) -> String? {
+        // Network filesystems (not under /Volumes/) are sources.
         let networkTypes = ["smbfs", "nfs", "afpfs", "webdav", "cifs", "acfs"]
         if networkTypes.contains(fsType) {
-            let url = URL(fileURLWithPath: path, isDirectory: false)
-            if let values = try? url.resourceValues(forKeys: [.volumeURLForRemountingKey, .volumeNameKey]),
-               let volumeName = values.volumeName,
-               values.volumeURLForRemounting != nil {
-                // Network share: use volume name plus network info.
-                return sourceNameFromVolume(volumeName, remountURL: values.volumeURLForRemounting)
-            }
-            
-            // Fall back to mount info for network filesystems.
-            let volumeName = withUnsafeBytes(of: stat.f_mntfromname) { buffer in
-                String(cString: buffer.bindMemory(to: CChar.self).baseAddress!)
-            }
-            return sourceNameFromMount(mountPoint: mountPoint, fromName: volumeName)
+            return sourceNameFromMount(mountPoint: mountPoint, fromName: fromName)
         }
         
         // Internal APFS volumes (like /System/Volumes/Data) are "this Mac".
@@ -221,9 +218,21 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     // MARK: - Test Helpers
     
     #if DEBUG
-    /// Exposed for testing: derives source name from mount info.
-    static func testSourceNameFromMount(mountPoint: String, fromName: String) -> String {
-        sourceNameFromMount(mountPoint: mountPoint, fromName: fromName)
+    /// Exposed for testing: derives source from mount info with injected filesystem type.
+    /// Allows tests to verify network share parsing without depending on real filesystem state.
+    static func testDetectSource(mountPoint: String, fsType: String, fromName: String) -> String? {
+        // Root filesystem is always "this Mac".
+        guard mountPoint != "/" else {
+            return nil
+        }
+        
+        // /Volumes/<name>: always return just the volume name.
+        let mountParts = mountPoint.split(separator: "/", omittingEmptySubsequences: true)
+        if mountParts.count >= 2, mountParts[0] == "Volumes" {
+            return String(mountParts[1])
+        }
+        
+        return detectSourceWithFsType(mountPoint: mountPoint, fsType: fsType, fromName: fromName)
     }
     
     /// Exposed for testing: shortens hostnames but keeps IPs intact.

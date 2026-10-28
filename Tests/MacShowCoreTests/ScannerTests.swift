@@ -306,8 +306,9 @@ struct SourceNameParsingTests {
     @Test func smbPathWithIPAddress() {
         // SMB mount from IP should keep the full IP address, not truncate at first dot.
         // Non-Volumes mount points get network-aware names.
-        let source = MediaItem.SourceCache.testSourceNameFromMount(
+        let source = MediaItem.SourceCache.testDetectSource(
             mountPoint: "/Users/user/NAS/media",
+            fsType: "smbfs",
             fromName: "//petar@192.168.0.202/media"
         )
         #expect(source == "media@192.168.0.202")
@@ -316,8 +317,9 @@ struct SourceNameParsingTests {
     @Test func smbPathWithHostname() {
         // SMB mount from hostname should shorten to first component.
         // Non-Volumes mount points get network-aware names.
-        let source = MediaItem.SourceCache.testSourceNameFromMount(
+        let source = MediaItem.SourceCache.testDetectSource(
             mountPoint: "/Users/user/NAS/share",
+            fsType: "smbfs",
             fromName: "//macshow@dspeter.taild48c09.ts.net/share"
         )
         #expect(source == "share@dspeter")
@@ -325,8 +327,9 @@ struct SourceNameParsingTests {
     
     @Test func nfsPathWithIPAddress() {
         // NFS mount from IP should keep the full IP address.
-        let source = MediaItem.SourceCache.testSourceNameFromMount(
+        let source = MediaItem.SourceCache.testDetectSource(
             mountPoint: "/mnt/backup",
+            fsType: "nfs",
             fromName: "10.0.1.50:/export/backup"
         )
         #expect(source == "backup@10.0.1.50")
@@ -334,8 +337,9 @@ struct SourceNameParsingTests {
     
     @Test func nfsPathWithHostname() {
         // NFS mount from hostname should shorten to first component.
-        let source = MediaItem.SourceCache.testSourceNameFromMount(
+        let source = MediaItem.SourceCache.testDetectSource(
             mountPoint: "/mnt/share",
+            fsType: "nfs",
             fromName: "server.local.lan:/export/share"
         )
         #expect(source == "share@server")
@@ -343,18 +347,37 @@ struct SourceNameParsingTests {
     
     @Test func volumesMountPoint() {
         // /Volumes/<name> always returns just the name for backward compatibility
-        // with saved hiddenSources AppStorage values.
-        let source = MediaItem.SourceCache.testSourceNameFromMount(
+        // with saved hiddenSources AppStorage values, regardless of filesystem type.
+        let source = MediaItem.SourceCache.testDetectSource(
             mountPoint: "/Volumes/Backup",
+            fsType: "smbfs",
             fromName: "//server/Backup"
         )
         #expect(source == "Backup")
         
-        let media = MediaItem.SourceCache.testSourceNameFromMount(
+        let media = MediaItem.SourceCache.testDetectSource(
             mountPoint: "/Volumes/Media",
+            fsType: "smbfs",
             fromName: "//macshow@dspeter.taild48c09.ts.net/Media"
         )
         #expect(media == "Media")
+    }
+    
+    @Test func localFilesystemNotSource() {
+        // Local filesystems (apfs, hfs) not under /Volumes/ are "this Mac".
+        let apfs = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/System/Volumes/Data",
+            fsType: "apfs",
+            fromName: "/dev/disk3s5"
+        )
+        #expect(apfs == nil)
+        
+        let hfs = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Volumes/OldDrive",
+            fsType: "hfs",
+            fromName: "/dev/disk2s1"
+        )
+        #expect(hfs == "OldDrive")  // /Volumes/<name> always returns name
     }
     
     @Test func ipv4AddressRecognition() {
