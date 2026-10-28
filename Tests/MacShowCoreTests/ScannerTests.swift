@@ -249,6 +249,184 @@ struct NetworkFolderTests {
     }
 }
 
+struct SourceDetectionTests {
+    @Test func volumesMountsAreDetected() {
+        let item = makeItem("/Volumes/Media/Movies/film.mkv")
+        #expect(item.source == "Media")
+    }
+    
+    @Test func localFilesHaveNoSource() {
+        // Local files on the root filesystem have no source.
+        let local = makeItem("/Users/me/Movies/film.mkv")
+        #expect(local.source == nil)
+    }
+    
+    @Test func rootFilesHaveNoSource() {
+        let root = makeItem("/tmp/test.mkv")
+        #expect(root.source == nil)
+    }
+    
+    @Test func dataVolumeFilesAreLocal() {
+        // On modern macOS, home folders live on the APFS Data volume at
+        // /System/Volumes/Data, which is still "this Mac" (not a separate source).
+        // Files there should return nil even though the mount point isn't "/".
+        let music = makeItem("/System/Volumes/Data/Users/me/Music/song.mp3")
+        let downloads = makeItem("/System/Volumes/Data/Users/me/Downloads/video.mp4")
+        #expect(music.source == nil)
+        #expect(downloads.source == nil)
+    }
+    
+    @Test func systemVolumesAreLocal() {
+        // Internal system volumes (Preboot, VM, Update, etc.) are "this Mac".
+        let preboot = makeItem("/System/Volumes/Preboot/file.bin")
+        let vm = makeItem("/System/Volumes/VM/sleepimage")
+        #expect(preboot.source == nil)
+        #expect(vm.source == nil)
+    }
+    
+    @Test func sourceIsConsistentForSameMountPoint() {
+        // Items on the same mount should have the same source.
+        let item1 = makeItem("/Volumes/Media/Movies/a.mkv")
+        let item2 = makeItem("/Volumes/Media/TV/b.mkv")
+        #expect(item1.source == item2.source)
+    }
+    
+    @Test func localFilesNotMisattributedToNearbyShare() {
+        // Local files under /Users/<user>/Music should not get the source
+        // from a share mounted at /Users/<user>/NAS/media.
+        // Both paths start with /Users/<user>/ but have different mount points.
+        let local1 = makeItem("/Users/test/Music/song.mp3")
+        let local2 = makeItem("/Users/test/Downloads/video.mp4")
+        #expect(local1.source == nil)
+        #expect(local2.source == nil)
+    }
+}
+
+struct SourceNameParsingTests {
+    @Test func smbPathWithIPAddress() {
+        // SMB mount from IP should keep the full IP address, not truncate at first dot.
+        // Non-Volumes mount points get network-aware names.
+        let source = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Users/user/NAS/media",
+            fsType: "smbfs",
+            fromName: "//petar@192.168.0.202/media"
+        )
+        #expect(source == "media@192.168.0.202")
+    }
+    
+    @Test func smbPathWithHostname() {
+        // SMB mount from hostname should shorten to first component.
+        // Non-Volumes mount points get network-aware names.
+        let source = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Users/user/NAS/share",
+            fsType: "smbfs",
+            fromName: "//macshow@dspeter.taild48c09.ts.net/share"
+        )
+        #expect(source == "share@dspeter")
+    }
+    
+    @Test func nfsPathWithIPAddress() {
+        // NFS mount from IP should keep the full IP address.
+        let source = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/mnt/backup",
+            fsType: "nfs",
+            fromName: "10.0.1.50:/export/backup"
+        )
+        #expect(source == "backup@10.0.1.50")
+    }
+    
+    @Test func nfsPathWithHostname() {
+        // NFS mount from hostname should shorten to first component.
+        let source = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/mnt/share",
+            fsType: "nfs",
+            fromName: "server.local.lan:/export/share"
+        )
+        #expect(source == "share@server")
+    }
+    
+    @Test func volumesMountPoint() {
+        // /Volumes/<name> always returns just the name for backward compatibility
+        // with saved hiddenSources AppStorage values, regardless of filesystem type.
+        let source = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Volumes/Backup",
+            fsType: "smbfs",
+            fromName: "//server/Backup"
+        )
+        #expect(source == "Backup")
+        
+        let media = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Volumes/Media",
+            fsType: "smbfs",
+            fromName: "//macshow@dspeter.taild48c09.ts.net/Media"
+        )
+        #expect(media == "Media")
+    }
+    
+    @Test func localFilesystemNotSource() {
+        // Local filesystems (apfs, hfs) not under /Volumes/ are "this Mac".
+        let apfs = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/System/Volumes/Data",
+            fsType: "apfs",
+            fromName: "/dev/disk3s5"
+        )
+        #expect(apfs == nil)
+        
+        let hfs = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Volumes/OldDrive",
+            fsType: "hfs",
+            fromName: "/dev/disk2s1"
+        )
+        #expect(hfs == "OldDrive")  // /Volumes/<name> always returns name
+    }
+    
+    @Test func smbWithUserInfo() {
+        // SMB paths with user@ or domain;user@ should strip user info before hostname shortening.
+        let userAtIP = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Users/user/NAS/media",
+            fsType: "smbfs",
+            fromName: "//petar@192.168.0.202/media"
+        )
+        #expect(userAtIP == "media@192.168.0.202")
+        
+        let domainUser = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/mnt/share",
+            fsType: "smbfs",
+            fromName: "//DOMAIN;user@server.local/share"
+        )
+        #expect(domainUser == "share@server")
+    }
+    
+    @Test func smbWithSpacesInShareName() {
+        // SMB share names with spaces arrive percent-encoded (%20).
+        let encoded = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Users/user/NAS/docs",
+            fsType: "smbfs",
+            fromName: "//192.168.1.1/My%20Documents"
+        )
+        #expect(encoded == "My Documents@192.168.1.1")
+    }
+    
+    @Test func ipv4AddressRecognition() {
+        #expect(MediaItem.SourceCache.testShortHostname("192.168.0.202") == "192.168.0.202")
+        #expect(MediaItem.SourceCache.testShortHostname("10.0.1.1") == "10.0.1.1")
+        #expect(MediaItem.SourceCache.testShortHostname("8.8.8.8") == "8.8.8.8")
+    }
+    
+    @Test func hostnameShortening() {
+        #expect(MediaItem.SourceCache.testShortHostname("dspeter.taild48c09.ts.net") == "dspeter")
+        #expect(MediaItem.SourceCache.testShortHostname("server.local") == "server")
+        #expect(MediaItem.SourceCache.testShortHostname("nas") == "nas")
+    }
+    
+    @Test func edgeCaseHostnames() {
+        // Not a valid IP (wrong number of components or non-numeric).
+        #expect(MediaItem.SourceCache.testShortHostname("192.168.0") == "192")
+        #expect(MediaItem.SourceCache.testShortHostname("192.168.0.202.extra") == "192")
+        #expect(MediaItem.SourceCache.testShortHostname("host-192.168.0.1") == "host-192")
+    }
+}
+
 struct ProtectionBoxTests {
     /// An MP4 box: 4-byte big-endian size, type, payload.
     func box(_ type: String, _ payload: Data = Data()) -> Data {
