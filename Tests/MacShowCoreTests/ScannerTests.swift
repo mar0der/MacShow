@@ -380,6 +380,33 @@ struct SourceNameParsingTests {
         #expect(hfs == "OldDrive")  // /Volumes/<name> always returns name
     }
     
+    @Test func smbWithUserInfo() {
+        // SMB paths with user@ or domain;user@ should strip user info before hostname shortening.
+        let userAtIP = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Users/user/NAS/media",
+            fsType: "smbfs",
+            fromName: "//petar@192.168.0.202/media"
+        )
+        #expect(userAtIP == "media@192.168.0.202")
+        
+        let domainUser = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/mnt/share",
+            fsType: "smbfs",
+            fromName: "//DOMAIN;user@server.local/share"
+        )
+        #expect(domainUser == "share@server")
+    }
+    
+    @Test func smbWithSpacesInShareName() {
+        // SMB share names with spaces arrive percent-encoded (%20).
+        let encoded = MediaItem.SourceCache.testDetectSource(
+            mountPoint: "/Users/user/NAS/docs",
+            fsType: "smbfs",
+            fromName: "//192.168.1.1/My%20Documents"
+        )
+        #expect(encoded == "My Documents@192.168.1.1")
+    }
+    
     @Test func ipv4AddressRecognition() {
         #expect(MediaItem.SourceCache.testShortHostname("192.168.0.202") == "192.168.0.202")
         #expect(MediaItem.SourceCache.testShortHostname("10.0.1.1") == "10.0.1.1")

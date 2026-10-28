@@ -188,12 +188,19 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
         
         // For network mounts (//server/share, server:/path): extract meaningful info.
         if fromName.hasPrefix("//") || fromName.contains(":/") {
-            // SMB: //server/share -> "share@server"
+            // SMB: //[user@]server/share or //[domain;user@]server/share
             if fromName.hasPrefix("//") {
                 let components = fromName.dropFirst(2).split(separator: "/", maxSplits: 2)
                 if components.count >= 2 {
-                    let server = String(components[0])
-                    let share = String(components[1])
+                    let serverWithUser = String(components[0])
+                    let shareEncoded = String(components[1])
+                    
+                    // Strip user info (user@ or domain;user@) from server.
+                    let server = stripUserInfo(from: serverWithUser)
+                    
+                    // Percent-decode share name (spaces arrive as %20).
+                    let share = shareEncoded.removingPercentEncoding ?? shareEncoded
+                    
                     return "\(share)@\(shortHostname(server))"
                 }
             }
@@ -213,6 +220,17 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
         }
         
         return mountPoint
+    }
+    
+    /// Strips user info (user@ or domain;user@) from a server string.
+    /// "petar@192.168.0.202" → "192.168.0.202"
+    /// "DOMAIN;user@server.local" → "server.local"
+    private static func stripUserInfo(from serverWithUser: String) -> String {
+        // Find the last @ (in case there's domain;user@server).
+        guard let atIndex = serverWithUser.lastIndex(of: "@") else {
+            return serverWithUser
+        }
+        return String(serverWithUser[serverWithUser.index(after: atIndex)...])
     }
     
     // MARK: - Test Helpers
