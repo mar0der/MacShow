@@ -67,16 +67,11 @@ extension MediaItem: FetchableRecord, MutablePersistableRecord {
 
 /// Caches source detection results per mount point to avoid repeated filesystem
 /// queries. Thread-safe for concurrent reads during library indexing.
-private final class SourceCache: @unchecked Sendable {
-    private struct CacheEntry {
-        let mountPoint: String
-        let source: String?
-    }
-    
-    private var cache: [String: CacheEntry] = [:]
+final class SourceCache: @unchecked Sendable {
+    private var cache: [String: String?] = [:]
     private let lock = NSLock()
     
-    /// Returns the source for a path, caching by mount point for performance.
+    /// Returns the source for a path, caching by actual mount point for performance.
     func source(for path: String) -> String? {
         // Quick check: /Volumes/<name>/ paths (most common network share layout).
         let parts = path.split(separator: "/", maxSplits: 3, omittingEmptySubsequences: true)
@@ -84,29 +79,43 @@ private final class SourceCache: @unchecked Sendable {
             return String(parts[1])
         }
         
-        // Check cache first, keyed by a path prefix likely to share a mount point.
-        let prefix = parts.count >= 2 ? "/\(parts[0])/\(parts[1])" : path
-        if let cached = lock.withLock({ cache[prefix] }) {
-            return cached.source
+        // Get the actual mount point via statfs (fast, single syscall).
+        let mountPoint = Self.getMountPoint(for: path)
+        
+        // Check cache by actual mount point (not path prefix).
+        if let cached = lock.withLock({ cache[mountPoint] }) {
+            return cached
         }
         
-        // Query the filesystem for mount point and whether it's a network volume.
-        let detected = Self.detectSource(for: path)
+        // Query the filesystem for source information.
+        let detected = Self.detectSource(for: path, mountPoint: mountPoint)
         
-        // Cache under both the detected mount point and our prefix guess.
+        // Cache by the actual mount point only.
         lock.withLock {
-            let entry = CacheEntry(mountPoint: detected.mountPoint, source: detected.source)
-            cache[detected.mountPoint] = entry
-            if detected.mountPoint != prefix {
-                cache[prefix] = entry
-            }
+            cache[mountPoint] = detected
         }
         
-        return detected.source
+        return detected
     }
     
-    /// Detects the source and mount point for a path by querying the filesystem.
-    private static func detectSource(for path: String) -> (mountPoint: String, source: String?) {
+    /// Gets the mount point for a path using statfs.
+    private static func getMountPoint(for path: String) -> String {
+        var stat = statfs()
+        guard statfs(path, &stat) == 0 else {
+            return "/"
+        }
+        return withUnsafeBytes(of: stat.f_mntonname) { buffer in
+            String(cString: buffer.bindMemory(to: CChar.self).baseAddress!)
+        }
+    }
+    
+    /// Detects the source for a path given its mount point.
+    private static func detectSource(for path: String, mountPoint: String) -> String? {
+        // Root filesystem is "this Mac"; everything else is its own source.
+        guard mountPoint != "/" else {
+            return nil
+        }
+        
         let url = URL(fileURLWithPath: path, isDirectory: false)
         
         // Try getting volume information from URL resource values.
@@ -114,32 +123,20 @@ private final class SourceCache: @unchecked Sendable {
            let volumeName = values.volumeName,
            values.volumeURLForRemounting != nil {
             // This is a network share: use volume name plus any useful network info.
-            let source = sourceNameFromVolume(volumeName, remountURL: values.volumeURLForRemounting)
-            return (mountPoint: mountPointFromPath(path), source: source)
+            return sourceNameFromVolume(volumeName, remountURL: values.volumeURLForRemounting)
         }
         
-        // Fall back to statfs to detect any non-root mount point.
+        // Fall back to deriving from statfs info.
         var stat = statfs()
         guard statfs(path, &stat) == 0 else {
-            return (mountPoint: "/", source: nil)
+            return nil
         }
         
-        let mountPoint = withUnsafeBytes(of: stat.f_mntonname) { buffer in
-            String(cString: buffer.bindMemory(to: CChar.self).baseAddress!)
-        }
-        
-        // Root filesystem is "this Mac"; everything else is its own source.
-        guard mountPoint != "/" else {
-            return (mountPoint: "/", source: nil)
-        }
-        
-        // Non-root mount: derive a source name from the mount point.
         let volumeName = withUnsafeBytes(of: stat.f_mntfromname) { buffer in
             String(cString: buffer.bindMemory(to: CChar.self).baseAddress!)
         }
         
-        let source = sourceNameFromMount(mountPoint: mountPoint, fromName: volumeName)
-        return (mountPoint: mountPoint, source: source)
+        return sourceNameFromMount(mountPoint: mountPoint, fromName: volumeName)
     }
     
     /// Derives a human-readable source name from a volume name and remount URL.
@@ -150,13 +147,31 @@ private final class SourceCache: @unchecked Sendable {
         }
         
         // For SMB/AFP/NFS: show "sharename@host" or "sharename on hostname".
-        let shortHost = host.split(separator: ".").first.map(String.init) ?? host
+        let shortHost = shortHostname(host)
         let shareName = remountURL.lastPathComponent
         
         if !shareName.isEmpty, shareName.lowercased() != volumeName.lowercased() {
             return "\(shareName)@\(shortHost)"
         }
         return "\(volumeName)@\(shortHost)"
+    }
+    
+    /// Shortens hostnames but keeps IP addresses intact.
+    /// "dspeter.taild48c09.ts.net" → "dspeter", "192.168.0.202" → "192.168.0.202"
+    private static func shortHostname(_ host: String) -> String {
+        let components = host.split(separator: ".")
+        
+        // Check if this looks like an IPv4 address (all components are numeric).
+        let isIPv4 = components.count == 4 && components.allSatisfy { component in
+            !component.isEmpty && component.allSatisfy(\.isNumber)
+        }
+        
+        if isIPv4 {
+            return host // Keep IP addresses intact
+        }
+        
+        // For hostnames, return the first component.
+        return components.first.map(String.init) ?? host
     }
     
     /// Derives a source name from a mount point and the device/network path.
@@ -175,8 +190,7 @@ private final class SourceCache: @unchecked Sendable {
                 if components.count >= 2 {
                     let server = String(components[0])
                     let share = String(components[1])
-                    let shortServer = server.split(separator: ".").first.map(String.init) ?? server
-                    return "\(share)@\(shortServer)"
+                    return "\(share)@\(shortHostname(server))"
                 }
             }
             
@@ -185,8 +199,7 @@ private final class SourceCache: @unchecked Sendable {
                 let server = String(fromName[..<colonIndex])
                 let sharePath = String(fromName[fromName.index(after: colonIndex)...])
                 let shareName = sharePath.split(separator: "/").last.map(String.init) ?? sharePath
-                let shortServer = server.split(separator: ".").first.map(String.init) ?? server
-                return "\(shareName)@\(shortServer)"
+                return "\(shareName)@\(shortHostname(server))"
             }
         }
         
@@ -198,18 +211,17 @@ private final class SourceCache: @unchecked Sendable {
         return mountPoint
     }
     
-    /// Extracts the likely mount point from a path for cache keying.
-    private static func mountPointFromPath(_ path: String) -> String {
-        let parts = path.split(separator: "/", maxSplits: 4, omittingEmptySubsequences: true)
-        if parts.count >= 2 {
-            if parts[0] == "Volumes" {
-                return "/\(parts[0])/\(parts[1])"
-            }
-            // For /Users/<user>/something, it's likely /
-            if parts[0] == "Users" {
-                return "/"
-            }
-        }
-        return "/"
+    // MARK: - Test Helpers
+    
+    #if DEBUG
+    /// Exposed for testing: derives source name from mount info.
+    static func testSourceNameFromMount(mountPoint: String, fromName: String) -> String {
+        sourceNameFromMount(mountPoint: mountPoint, fromName: fromName)
     }
+    
+    /// Exposed for testing: shortens hostnames but keeps IPs intact.
+    static func testShortHostname(_ host: String) -> String {
+        shortHostname(host)
+    }
+    #endif
 }

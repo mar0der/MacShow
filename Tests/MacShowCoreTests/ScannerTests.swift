@@ -271,6 +271,82 @@ struct SourceDetectionTests {
         let item2 = makeItem("/Volumes/Media/TV/b.mkv")
         #expect(item1.source == item2.source)
     }
+    
+    @Test func localFilesNotMisattributedToNearbyShare() {
+        // Local files under /Users/<user>/Music should not get the source
+        // from a share mounted at /Users/<user>/NAS/media.
+        // Both paths start with /Users/<user>/ but have different mount points.
+        let local1 = makeItem("/Users/test/Music/song.mp3")
+        let local2 = makeItem("/Users/test/Downloads/video.mp4")
+        #expect(local1.source == nil)
+        #expect(local2.source == nil)
+    }
+}
+
+struct SourceNameParsingTests {
+    @Test func smbPathWithIPAddress() {
+        // SMB mount from IP should keep the full IP address, not truncate at first dot.
+        let source = MediaItem.SourceCache.testSourceNameFromMount(
+            mountPoint: "/Users/user/NAS/media",
+            fromName: "//petar@192.168.0.202/media"
+        )
+        #expect(source == "media@192.168.0.202")
+    }
+    
+    @Test func smbPathWithHostname() {
+        // SMB mount from hostname should shorten to first component.
+        let source = MediaItem.SourceCache.testSourceNameFromMount(
+            mountPoint: "/Volumes/Media",
+            fromName: "//macshow@dspeter.taild48c09.ts.net/Media"
+        )
+        #expect(source == "Media@dspeter")
+    }
+    
+    @Test func nfsPathWithIPAddress() {
+        // NFS mount from IP should keep the full IP address.
+        let source = MediaItem.SourceCache.testSourceNameFromMount(
+            mountPoint: "/mnt/backup",
+            fromName: "10.0.1.50:/export/backup"
+        )
+        #expect(source == "backup@10.0.1.50")
+    }
+    
+    @Test func nfsPathWithHostname() {
+        // NFS mount from hostname should shorten to first component.
+        let source = MediaItem.SourceCache.testSourceNameFromMount(
+            mountPoint: "/mnt/share",
+            fromName: "server.local.lan:/export/share"
+        )
+        #expect(source == "share@server")
+    }
+    
+    @Test func volumesMountPoint() {
+        // /Volumes/<name> should just return the name.
+        let source = MediaItem.SourceCache.testSourceNameFromMount(
+            mountPoint: "/Volumes/Backup",
+            fromName: "//server/Backup"
+        )
+        #expect(source == "Backup")
+    }
+    
+    @Test func ipv4AddressRecognition() {
+        #expect(MediaItem.SourceCache.testShortHostname("192.168.0.202") == "192.168.0.202")
+        #expect(MediaItem.SourceCache.testShortHostname("10.0.1.1") == "10.0.1.1")
+        #expect(MediaItem.SourceCache.testShortHostname("8.8.8.8") == "8.8.8.8")
+    }
+    
+    @Test func hostnameShortening() {
+        #expect(MediaItem.SourceCache.testShortHostname("dspeter.taild48c09.ts.net") == "dspeter")
+        #expect(MediaItem.SourceCache.testShortHostname("server.local") == "server")
+        #expect(MediaItem.SourceCache.testShortHostname("nas") == "nas")
+    }
+    
+    @Test func edgeCaseHostnames() {
+        // Not a valid IP (wrong number of components or non-numeric).
+        #expect(MediaItem.SourceCache.testShortHostname("192.168.0") == "192")
+        #expect(MediaItem.SourceCache.testShortHostname("192.168.0.202.extra") == "192")
+        #expect(MediaItem.SourceCache.testShortHostname("host-192.168.0.1") == "host-192")
+    }
 }
 
 struct ProtectionBoxTests {
